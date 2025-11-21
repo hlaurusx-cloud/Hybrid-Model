@@ -452,7 +452,7 @@ elif st.session_state.step == 3:
                 st.error(f"전처리 실패：{str(e)}")
 
 # ----------------------
-# 단계 4：모델 학습（하이브리드모형：회귀 분석+의사결정나무）
+# 단계 4：모델 학습（修复 stratify 参数错误）
 # ----------------------
 elif st.session_state.step == 4:
     st.subheader("🚀 하이브리드모형 학습（회귀 분석 + 의사결정나무）")
@@ -464,44 +464,74 @@ elif st.session_state.step == 4:
         X = st.session_state.data["X_processed"]
         y = st.session_state.data["y_processed"]
         
-        # 데이터 분할（학습集+테스트集）
+        # ----------------------
+        # 核心修复：stratify 参数有效性校验
+        # ----------------------
         st.markdown("### 학습 설정")
         test_size = st.slider("테스트集 비율", min_value=0.1, max_value=0.3, value=0.2, step=0.05)
+        
+        # stratify 사용 여부 결정（分类任务且目标变量类别数≥2时才使用）
+        stratify_param = None
+        if st.session_state.task == "logit":  # 分类任务
+            y_unique_count = y.nunique()  # 目标变量唯一值数量
+            if y_unique_count >= 2:
+                # 进一步检查每个类别的样本数是否≥1
+                y_value_counts = y.value_counts()
+                if (y_value_counts >= 1).all():
+                    stratify_param = y
+                    st.info(f"✅分层抽样 적용：目标变量에 {y_unique_count} 个类别 존재（样本数：{y_value_counts.to_dict()}）")
+                else:
+                    st.warning(f"⚠️ 일부类别样本数为0，分层抽样禁用（自动转为普通随机抽样）")
+            else:
+                st.warning(f"⚠️ 目标变量只有 {y_unique_count} 个类别，分层抽样禁用（自动转为普通随机抽样）")
+        else:
+            st.info("ℹ️ 回归任务不支持分层抽样，使用普通随机抽样")
+        
+        # 数据 분할（修复后：根据校验结果决定是否使用 stratify）
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=test_size, random_state=42, 
-            stratify=y if st.session_state.task == "logit" else None
+            stratify=stratify_param  # 校验后的参数
         )
         
         # 모델 선택（작업 유형에 따라）
-        if st.session_state.task == "logit":  # 분류任务：로지스틱 회귀（회귀분석）+ 분류 의사결정나무
+        if st.session_state.task == "logit":  # 分类任务：로지스틱 회귀（회귀분석）+ 분류 의사결정나무
             reg_model = LogisticRegression(max_iter=1000)  # 分类用 회귀분석（로지스틱）
             dt_model = DecisionTreeClassifier(random_state=42, max_depth=10)  # 分类 의사결정나무
-        else:  # 회귀任务：선형 회귀（회귀분석）+ 회귀 의사결정나무
+        else:  # 回归任务：선형 회귀（회귀분석）+ 회귀 의사결정나무
             reg_model = LinearRegression()  # 回归用 회귀분석（선형）
             dt_model = DecisionTreeRegressor(random_state=42, max_depth=10)  # 回归 의사결정나무
         
         # 모델 학습
         if st.button("모델 학습 시작"):
             with st.spinner("모델 학습 중..."):
-                # 단일 모델 학습
-                reg_model.fit(X_train, y_train)
-                dt_model.fit(X_train, y_train)
-                
-                # 모델 저장
-                st.session_state.models["regression"] = reg_model
-                st.session_state.models["decision_tree"] = dt_model
-                
-                # 학습集/테스트集 저장
-                st.session_state.data["X_train"] = X_train
-                st.session_state.data["X_test"] = X_test
-                st.session_state.data["y_train"] = y_train
-                st.session_state.data["y_test"] = y_test
-                
-                st.success("모델 학습 완료！")
-                st.markdown("✅ 학습된 모델：")
-                st.markdown("- 회귀 분석（로지스틱/선형，해석력 강함）")
-                st.markdown("- 의사결정나무（분류/회귀，정확도 높음）")
-                st.markdown("- 하이브리드모형（전两者 가중融合）")
+                try:
+                    # 단일 모델 학습
+                    reg_model.fit(X_train, y_train)
+                    dt_model.fit(X_train, y_train)
+                    
+                    # 모델 저장
+                    st.session_state.models["regression"] = reg_model
+                    st.session_state.models["decision_tree"] = dt_model
+                    
+                    # 학습集/테스트集 저장
+                    st.session_state.data["X_train"] = X_train
+                    st.session_state.data["X_test"] = X_test
+                    st.session_state.data["y_train"] = y_train
+                    st.session_state.data["y_test"] = y_test
+                    
+                    st.success("모델 학습 완료！")
+                    st.markdown("✅ 학습된 모델：")
+                    st.markdown("- 회귀 분석（로지스틱/선형，해석력 강함）")
+                    st.markdown("- 의사결정나무（분류/회귀，정확도 높음）")
+                    st.markdown("- 하이브리드모형（전两者 가중融合）")
+                    
+                    # 训练集/测试集 정보 표시
+                    st.markdown(f"📊 학습集：{len(X_train):,} 행 | 테스트集：{len(X_test):,} 행")
+                    if st.session_state.task == "logit":
+                        st.markdown(f"🎯 训练集类别分布：{y_train.value_counts().to_dict()}")
+                        st.markdown(f"🎯 测试集类别分布：{y_test.value_counts().to_dict()}")
+                except Exception as e:
+                    st.error(f"모델 학습 실패：{str(e)}")
 
 # ----------------------
 # 단계 5：모델 예측（단일/일괄 업로드）
