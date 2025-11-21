@@ -268,7 +268,7 @@ elif st.session_state.step == 2:
         st.info("🔧 데이터 전처리를 위해 왼쪽 사이드바에서「데이터 전처리」단계로 이동하세요")
 
 # ----------------------
-# 단계 3：데이터 전처리（단일 파일에 맞춰逻辑 수정）
+# 단계 3：데이터 전처리（修复 selectbox 错误）
 # ----------------------
 elif st.session_state.step == 3:
     st.subheader("🧹 데이터 전처리")
@@ -297,17 +297,32 @@ elif st.session_state.step == 3:
             else:
                 st.success("결측값이 없습니다！")
         
-        # 2. 전처리 설정（사용자가 조정 가능）
+        # 2. 전처리 설정（修复 selectbox 错误）
         st.divider()
         st.markdown("### 전처리 매개변수 설정")
         
-        # 타겟 열 선택（예측 변수）
-        target_col = st.selectbox("타겟 열 선택（예측할 변수）", options=df_merged.columns, index=-1)
-        st.session_state.preprocess["target_col"] = target_col
+        # 타겟 열 선택（예측 변수）- 核心修复：index=0（默认第一个列），增加有效性校验
+        if len(df_merged.columns) > 0:
+            target_col = st.selectbox(
+                "타겟 열 선택（예측할 변수）", 
+                options=df_merged.columns, 
+                index=0  # 修复：默认选择第一个列，而非 -1
+            )
+            st.session_state.preprocess["target_col"] = target_col
+        else:
+            st.error("데이터에 열이 존재하지 않습니다！올바른 데이터 파일을 업로드하세요")
+            st.stop()
         
         # 특징 열 선택（타겟 열과 무관한 열 제외）
-        exclude_cols = st.multiselect("제외할 열 선택（예：ID、무관한 필드）", options=[col for col in df_merged.columns if col != target_col])
+        exclude_cols = st.multiselect(
+            "제외할 열 선택（예：ID、무관한 필드）", 
+            options=[col for col in df_merged.columns if col != target_col]
+        )
         feature_cols = [col for col in df_merged.columns if col not in exclude_cols + [target_col]]
+        
+        # 特征列有效性校验
+        if not feature_cols:
+            st.warning("특징 열이 선택되지 않았습니다！제외할 열을 조정하세요")
         st.session_state.preprocess["feature_cols"] = feature_cols
         
         # 결측값 처리
@@ -319,8 +334,12 @@ elif st.session_state.step == 3:
         st.markdown("#### 범주형 특징 인코딩")
         cat_encoding = st.selectbox("범주형 특징 인코딩 방식", options=["레이블 인코딩（LabelEncoder）", "원-핫 인코딩（OneHotEncoder）"], index=0)
         
-        # 3. 전처리 실행
+        # 3. 전처리 실행（增加特征列非空校验）
         if st.button("전처리 시작"):
+            if not feature_cols:
+                st.error("전처리 실패：특징 열이 없습니다！")
+                continue
+            
             try:
                 X = df_merged[feature_cols].copy()
                 y = df_merged[target_col].copy()
