@@ -17,17 +17,17 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # ----------------------
-# 1. 页面基础配置
+# 1. 페이지 기본 설정
 # ----------------------
 st.set_page_config(
-    page_title="混合模型（하이브리드모형）动态框架",
+    page_title="하이브리드모형 동적 프레임워크",
     page_icon="📊",
     layout="wide"
 )
 
-# 全局状态管理（存储各步骤数据/模型，避免刷新丢失）
+# 전역 상태 관리（각 단계 데이터/모델 저장，새로고침 시 손실 방지）
 if "step" not in st.session_state:
-    st.session_state.step = 0  # 0:初始页 1:数据上传 2:数据预处理 3:模型训练 4:预测 5:评估
+    st.session_state.step = 0  # 0:초기화면 1:데이터업로드 2:데이터전처리 3:모델학습 4:예측 5:평가
 if "data" not in st.session_state:
     st.session_state.data = {"accept": None, "genied": None, "merged": None}
 if "preprocess" not in st.session_state:
@@ -35,78 +35,78 @@ if "preprocess" not in st.session_state:
 if "models" not in st.session_state:
     st.session_state.models = {"lr": None, "lgb": None, "mixed_weights": {"lr": 0.3, "lgb": 0.7}}
 if "task" not in st.session_state:
-    st.session_state.task = "分类"  # 默认为分类，可切换为回归
+    st.session_state.task = "logit"  # 기본값 logit，의사결정나무로 전환 가능
 
 # ----------------------
-# 2. 侧边栏：步骤导航 + 核心配置
+# 2. 사이드바：단계导航 + 핵심 설정
 # ----------------------
-st.sidebar.title("📌 混合模型操作流程")
+st.sidebar.title("📌 하이브리드모형 작업 흐름")
 st.sidebar.divider()
 
-# 步骤导航按钮
-steps = ["初始设置", "上传数据", "数据预处理", "模型训练", "模型预测", "效果评估"]
+# 단계导航 버튼
+steps = ["초기 설정", "데이터 업로드", "데이터 전처리", "모델 학습", "모델 예측", "성능 평가"]
 for i, step_name in enumerate(steps):
     if st.sidebar.button(step_name, key=f"btn_{i}"):
         st.session_state.step = i
 
-# 核心配置（任务类型 + 混合权重）
+# 핵심 설정（작업 유형 + 혼합 가중치）
 st.sidebar.divider()
-st.sidebar.subheader("核心配置")
-st.session_state.task = st.sidebar.radio("任务类型", options=["分类", "回归"], index=0)
+st.sidebar.subheader("핵심 설정")
+st.session_state.task = st.sidebar.radio("작업 유형", options=["logit", "의사결정나무"], index=0)
 
-if st.session_state.step >= 3:  # 模型训练后可调整权重
-    st.sidebar.subheader("混合模型权重")
+if st.session_state.step >= 3:  # 모델 학습 후 가중치 조정 가능
+    st.sidebar.subheader("하이브리드모형 가중치")
     lr_weight = st.sidebar.slider(
-        "逻辑回归权重（可解释性）",
+        "로지스틱 회귀 가중치（해석력 강함）",
         min_value=0.0, max_value=1.0, value=st.session_state.models["mixed_weights"]["lr"], step=0.1
     )
     st.session_state.models["mixed_weights"]["lr"] = lr_weight
     st.session_state.models["mixed_weights"]["lgb"] = 1 - lr_weight
-    st.sidebar.text(f"LightGBM权重（高精度）：{1 - lr_weight:.1f}")
+    st.sidebar.text(f"LightGBM 가중치（정확도 높음）：{1 - lr_weight:.1f}")
 
 # ----------------------
-# 3. 主页面：分步骤展示内容
+# 3. 메인 페이지：단계별 내용 표시
 # ----------------------
-st.title("📊 混合模型（하이브리드모형）动态部署框架")
-st.markdown("**支持上传 accept/genied 原始数据，一键完成预处理→训练→预测全流程**")
+st.title("📊 하이브리드모형 동적 배포 프레임워크")
+st.markdown("**accept/genied 원본 데이터 업로드 후，전처리→학습→예측 전과정을 한 번에 완성**")
 st.divider()
 
 # ----------------------
-# 步骤0：初始设置（引导页）
+# 단계 0：초기 설정（안내 페이지）
 # ----------------------
 if st.session_state.step == 0:
-    st.subheader("🎉 欢迎使用混合模型动态框架")
+    st.subheader("🎉 하이브리드모형 동적 프레임워크에 오신 것을 환영합니다")
     st.markdown("""
-    本框架支持 **收到数据后直接导入使用**，无需提前预处理或训练模型，核心流程如下：
+    본 프레임워크는 **데이터 수령 후 직접 업로드하여 사용**할 수 있으며，사전 전처리나 모델 학습이 필요 없습니다. 핵심 흐름은 다음과 같습니다：
     
-    1. **上传数据**：上传 accept 和 genied 两个原始文件（CSV/Parquet/Excel）
-    2. **数据预处理**：合并数据、填充缺失值、编码类别特征
-    3. **模型训练**：训练「逻辑回归+LightGBM」混合模型
-    4. **模型预测**：支持单条输入或批量上传预测
-    5. **效果评估**：对比混合模型与单一模型的性能
+    1. **데이터 업로드**：accept와 genied 두 개의 원본 파일（CSV/Parquet/Excel）을 업로드
+    2. **데이터 전처리**：데이터 병합、결측값 채우기、범주형 특징 인코딩
+    3. **모델 학습**：「로지스틱 회귀+LightGBM」하이브리드모형 학습
+    4. **모델 예측**：단일 데이터 입력 또는 일괄 업로드 예측을 지원
+    5. **성능 평가**：하이브리드모형과 단일 모형의 성능을 비교
     
-    ### 适用场景
-    - 分类任务（如：预测用户是否接受服务、是否违约）
-    - 回归任务（如：预测销量、金额、评分）
+    ### 적용 가능场景
+    - logit 작업（예：사용자가 서비스를 수락할지 여부 예측、위반 여부 예측）
+    - 의사결정나무 작업（예：판매량、금액、평점 예측）
     
-    ### 点击左侧「上传数据」开始使用！
+    ### 왼쪽「데이터 업로드」를 클릭하여 사용을 시작하세요！
     """)
 
 # ----------------------
-# 步骤1：上传数据（核心：支持动态导入两个原始文件）
+# 단계 1：데이터 업로드（핵심：두 개의 원본 파일 동적导入）
 # ----------------------
 elif st.session_state.step == 1:
-    st.subheader("📤 上传数据（accept + genied）")
-    st.markdown("支持格式：CSV、Parquet、Excel（.xlsx/.xls）")
+    st.subheader("📤 데이터 업로드（accept + genied）")
+    st.markdown("지원 형식：CSV、Parquet、Excel（.xlsx/.xls）")
     
     col1, col2 = st.columns(2)
     
-    # 上传 accept 文件
+    # accept 파일 업로드
     with col1:
-        st.markdown("### accept 数据集")
-        accept_file = st.file_uploader("选择 accept 文件", type=["csv", "parquet", "xlsx", "xls"], key="accept")
+        st.markdown("### accept 데이터셋")
+        accept_file = st.file_uploader("accept 파일 선택", type=["csv", "parquet", "xlsx", "xls"], key="accept")
         if accept_file is not None:
-            # 读取不同格式文件
+            # 다양한 형식 파일 읽기
             if accept_file.name.endswith(".csv"):
                 df_accept = pd.read_csv(accept_file)
             elif accept_file.name.endswith(".parquet"):
@@ -114,13 +114,13 @@ elif st.session_state.step == 1:
             elif accept_file.name.endswith((".xlsx", ".xls")):
                 df_accept = pd.read_excel(accept_file)
             st.session_state.data["accept"] = df_accept
-            st.metric("数据量", f"{len(df_accept):,} 行 × {len(df_accept.columns)} 列")
+            st.metric("데이터 양", f"{len(df_accept):,} 행 × {len(df_accept.columns)} 열")
             st.dataframe(df_accept.head(3), use_container_width=True)
     
-    # 上传 genied 文件
+    # genied 파일 업로드
     with col2:
-        st.markdown("### genied 数据集")
-        genied_file = st.file_uploader("选择 genied 文件", type=["csv", "parquet", "xlsx", "xls"], key="genied")
+        st.markdown("### genied 데이터셋")
+        genied_file = st.file_uploader("genied 파일 선택", type=["csv", "parquet", "xlsx", "xls"], key="genied")
         if genied_file is not None:
             if genied_file.name.endswith(".csv"):
                 df_genied = pd.read_csv(genied_file)
@@ -129,24 +129,24 @@ elif st.session_state.step == 1:
             elif genied_file.name.endswith((".xlsx", ".xls")):
                 df_genied = pd.read_excel(genied_file)
             st.session_state.data["genied"] = df_genied
-            st.metric("数据量", f"{len(df_genied):,} 行 × {len(df_genied.columns)} 列")
+            st.metric("데이터 양", f"{len(df_genied):,} 행 × {len(df_genied.columns)} 열")
             st.dataframe(df_genied.head(3), use_container_width=True)
     
-    # 数据合并（需用户指定关联键）
+    # 데이터 병합（사용자가 연관 키 지정 필요）
     st.divider()
     if st.session_state.data["accept"] is not None and st.session_state.data["genied"] is not None:
-        st.markdown("### 数据合并设置")
-        # 自动识别共同列作为关联键候选
+        st.markdown("### 데이터 병합 설정")
+        # 공통 열 자동识别하여 연관 키 후보로 제시
         common_cols = list(set(st.session_state.data["accept"].columns) & set(st.session_state.data["genied"].columns))
         if common_cols:
-            join_key = st.selectbox("选择关联键（用于合并两个数据集）", options=common_cols, index=0)
+            join_key = st.selectbox("연관 키 선택（두 데이터셋을 병합하기 위해）", options=common_cols, index=0)
         else:
-            join_key = st.text_input("无共同列，请输入关联键（需两个文件中均存在）")
+            join_key = st.text_input("공통 열이 없습니다，연관 키를 입력하세요（두 파일에 모두 존재해야 함）")
         
-        join_type = st.selectbox("合并方式", options=["内连接（只保留共同数据）", "左连接（保留accept全部数据）"], index=0)
-        join_type_map = {"内连接（只保留共同数据）": "inner", "左连接（保留accept全部数据）": "left"}
+        join_type = st.selectbox("병합 방식", options=["내부 조인（공통 데이터만 유지）", "왼쪽 조인（accept 모든 데이터 유지）"], index=0)
+        join_type_map = {"내부 조인（공통 데이터만 유지）": "inner", "왼쪽 조인（accept 모든 데이터 유지）": "left"}
         
-        if st.button("开始合并数据"):
+        if st.button("데이터 병합 시작"):
             try:
                 df_merged = pd.merge(
                     st.session_state.data["accept"],
@@ -155,295 +155,295 @@ elif st.session_state.step == 1:
                     how=join_type_map[join_type]
                 )
                 st.session_state.data["merged"] = df_merged
-                st.success(f"数据合并成功！合并后数据：{len(df_merged):,} 行 × {len(df_merged.columns)} 列")
+                st.success(f"데이터 병합 성공！병합 후 데이터：{len(df_merged):,} 행 × {len(df_merged.columns)} 열")
                 st.dataframe(df_merged.head(3), use_container_width=True)
             except Exception as e:
-                st.error(f"合并失败：{str(e)}")
+                st.error(f"병합 실패：{str(e)}")
     else:
-        st.warning("请先上传两个数据集再进行合并")
+        st.warning("두 개의 데이터셋을 모두 업로드한 후 병합하세요")
 
 # ----------------------
-# 步骤2：数据预处理（动态适配数据，无需提前配置）
+# 단계 2：데이터 전처리（데이터에 동적으로适配，사전 설정 불필요）
 # ----------------------
 elif st.session_state.step == 2:
-    st.subheader("🧹 数据预处理")
+    st.subheader("🧹 데이터 전처리")
     
     if st.session_state.data["merged"] is None:
-        st.warning("请先完成「上传数据」步骤并合并数据")
+        st.warning("먼저「데이터 업로드」단계를 완료하고 데이터를 병합하세요")
     else:
         df_merged = st.session_state.data["merged"]
         
-        # 1. 数据概览（缺失值、数据类型）
+        # 1. 데이터 개요（결측값、데이터 유형）
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("### 数据基本信息")
-            st.write(f"总数据量：{len(df_merged):,} 行 × {len(df_merged.columns)} 列")
-            st.write("数据类型分布：")
+            st.markdown("### 데이터 기본 정보")
+            st.write(f"총 데이터 양：{len(df_merged):,} 행 × {len(df_merged.columns)} 열")
+            st.write("데이터 유형 분포：")
             st.dataframe(df_merged.dtypes.value_counts().reset_index(), use_container_width=True)
         
         with col2:
-            st.markdown("### 缺失值分布")
+            st.markdown("### 결측값 분포")
             missing_info = df_merged.isnull().sum()[df_merged.isnull().sum() > 0].reset_index()
-            missing_info.columns = ["字段名", "缺失值数量"]
+            missing_info.columns = ["필드명", "결측값 개수"]
             if len(missing_info) > 0:
                 st.dataframe(missing_info, use_container_width=True)
-                fig_missing = px.imshow(df_merged.isnull(), color_continuous_scale="Reds", title="缺失值热力图")
+                fig_missing = px.imshow(df_merged.isnull(), color_continuous_scale="Reds", title="결측값 히트맵")
                 st.plotly_chart(fig_missing, use_container_width=True)
             else:
-                st.success("无缺失值！")
+                st.success("결측값이 없습니다！")
         
-        # 2. 预处理配置（用户可调整）
+        # 2. 전처리 설정（사용자가 조정 가능）
         st.divider()
-        st.markdown("### 预处理参数设置")
+        st.markdown("### 전처리 매개변수 설정")
         
-        # 选择目标列（预测变量）
-        target_col = st.selectbox("选择目标列（需预测的变量）", options=df_merged.columns, index=-1)
+        # 타겟 열 선택（예측 변수）
+        target_col = st.selectbox("타겟 열 선택（예측할 변수）", options=df_merged.columns, index=-1)
         st.session_state.preprocess["target_col"] = target_col
         
-        # 选择特征列（排除目标列和无用列）
-        exclude_cols = st.multiselect("选择需排除的列（如ID、无关字段）", options=[col for col in df_merged.columns if col != target_col])
+        # 특징 열 선택（타겟 열과 무관한 열 제외）
+        exclude_cols = st.multiselect("제외할 열 선택（예：ID、무관한 필드）", options=[col for col in df_merged.columns if col != target_col])
         feature_cols = [col for col in df_merged.columns if col not in exclude_cols + [target_col]]
         st.session_state.preprocess["feature_cols"] = feature_cols
         
-        # 缺失值处理
-        st.markdown("#### 缺失值处理")
-        impute_strategy = st.selectbox("数值型缺失值填充方式", options=["中位数", "均值", "众数"], index=0)
-        impute_strategy_map = {"中位数": "median", "均值": "mean", "众数": "most_frequent"}
+        # 결측값 처리
+        st.markdown("#### 결측값 처리")
+        impute_strategy = st.selectbox("수치형 결측값 채우기 방식", options=["중앙값", "평균값", "최빈값"], index=0)
+        impute_strategy_map = {"중앙값": "median", "평균값": "mean", "최빈값": "most_frequent"}
         
-        # 类别特征编码
-        st.markdown("#### 类别特征编码")
-        cat_encoding = st.selectbox("类别型特征编码方式", options=["标签编码（LabelEncoder）", "独热编码（OneHotEncoder）"], index=0)
+        # 범주형 특징 인코딩
+        st.markdown("#### 범주형 특징 인코딩")
+        cat_encoding = st.selectbox("범주형 특징 인코딩 방식", options=["레이블 인코딩（LabelEncoder）", "원-핫 인코딩（OneHotEncoder）"], index=0)
         
-        # 3. 执行预处理
-        if st.button("开始预处理"):
+        # 3. 전처리 실행
+        if st.button("전처리 시작"):
             try:
                 X = df_merged[feature_cols].copy()
                 y = df_merged[target_col].copy()
                 
-                # 分离数值型和类别型特征
+                # 수치형과 범주형 특징 분리
                 num_cols = X.select_dtypes(include=["int64", "float64"]).columns
                 cat_cols = X.select_dtypes(include=["object", "category"]).columns
                 
-                # 数值型预处理：缺失值填充 + 标准化
+                # 수치형 전처리：결측값 채우기 + 표준화
                 imputer = SimpleImputer(strategy=impute_strategy_map[impute_strategy])
                 X[num_cols] = imputer.fit_transform(X[num_cols])
                 
                 scaler = StandardScaler()
                 X[num_cols] = scaler.fit_transform(X[num_cols])
                 
-                # 类别型预处理：缺失值填充 + 编码
+                # 범주형 전처리：결측값 채우기 + 인코딩
                 encoders = {}
                 for col in cat_cols:
-                    # 填充类别型缺失值为"未知"
-                    X[col] = X[col].fillna("未知").astype(str)
+                    # 범주형 결측값을 "알 수 없음"으로 채우기
+                    X[col] = X[col].fillna("알 수 없음").astype(str)
                     
-                    if cat_encoding == "标签编码（LabelEncoder）":
+                    if cat_encoding == "레이블 인코딩（LabelEncoder）":
                         le = LabelEncoder()
                         X[col] = le.fit_transform(X[col])
                         encoders[col] = le
-                    else:  # 独热编码
+                    else:  # 원-핫 인코딩
                         ohe = OneHotEncoder(sparse_output=False, drop="first")
                         ohe_result = ohe.fit_transform(X[[col]])
-                        ohe_cols = [f"{col}_{cat}" for cat in ohe.categories_[0][1:]]  # 排除第一个类别（避免共线性）
+                        ohe_cols = [f"{col}_{cat}" for cat in ohe.categories_[0][1:]]  # 첫 번째 범주 제외（다중공선성 방지）
                         X = pd.concat([X.drop(col, axis=1), pd.DataFrame(ohe_result, columns=ohe_cols)], axis=1)
                         encoders[col] = (ohe, ohe_cols)
                 
-                # 保存预处理组件
+                # 전처리组件 저장
                 st.session_state.preprocess["imputer"] = imputer
                 st.session_state.preprocess["scaler"] = scaler
                 st.session_state.preprocess["encoders"] = encoders
-                st.session_state.preprocess["feature_cols"] = list(X.columns)  # 更新后的特征列（含独热编码列）
+                st.session_state.preprocess["feature_cols"] = list(X.columns)  # 업데이트된 특징 열（원-핫 인코딩 열 포함）
                 
-                # 保存预处理后的数据
+                # 전처리된 데이터 저장
                 st.session_state.data["X_processed"] = X
                 st.session_state.data["y_processed"] = y
                 
-                st.success("数据预处理完成！")
-                st.markdown(f"预处理后特征数：{len(X.columns)}")
+                st.success("데이터 전처리 완료！")
+                st.markdown(f"전처리 후 특징 수：{len(X.columns)}")
                 st.dataframe(X.head(3), use_container_width=True)
             except Exception as e:
-                st.error(f"预处理失败：{str(e)}")
+                st.error(f"전처리 실패：{str(e)}")
 
 # ----------------------
-# 步骤3：模型训练（混合模型：逻辑回归+LightGBM）
+# 단계 3：모델 학습（하이브리드모형：로지스틱 회귀+LightGBM）
 # ----------------------
 elif st.session_state.step == 3:
-    st.subheader("🚀 混合模型训练")
+    st.subheader("🚀 하이브리드모형 학습")
     
-    # 检查预处理是否完成
+    # 전처리 완료 여부 확인
     if "X_processed" not in st.session_state.data or "y_processed" not in st.session_state.data:
-        st.warning("请先完成「数据预处理」步骤")
+        st.warning("먼저「데이터 전처리」단계를 완료하세요")
     else:
         X = st.session_state.data["X_processed"]
         y = st.session_state.data["y_processed"]
         
-        # 数据拆分（训练集+测试集）
-        st.markdown("### 训练配置")
-        test_size = st.slider("测试集占比", min_value=0.1, max_value=0.3, value=0.2, step=0.05)
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y if st.session_state.task == "分类" else None)
+        # 데이터 분할（학습集+테스트集）
+        st.markdown("### 학습 설정")
+        test_size = st.slider("테스트集 비율", min_value=0.1, max_value=0.3, value=0.2, step=0.05)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y if st.session_state.task == "logit" else None)
         
-        # 模型选择（根据任务类型）
-        if st.session_state.task == "分类":
+        # 모델 선택（작업 유형에 따라）
+        if st.session_state.task == "logit":
             lr_model = LogisticRegression(max_iter=1000)
             lgb_model = LGBMClassifier(n_estimators=100, learning_rate=0.1, random_state=42)
-        else:  # 回归
+        else:  # 의사결정나무（회귀任务）
             lr_model = LinearRegression()
             lgb_model = LGBMRegressor(n_estimators=100, learning_rate=0.1, random_state=42)
         
-        # 训练模型
-        if st.button("开始训练模型"):
-            with st.spinner("模型训练中..."):
-                # 训练单一模型
+        # 모델 학습
+        if st.button("모델 학습 시작"):
+            with st.spinner("모델 학습 중..."):
+                # 단일 모델 학습
                 lr_model.fit(X_train, y_train)
                 lgb_model.fit(X_train, y_train)
                 
-                # 保存模型
+                # 모델 저장
                 st.session_state.models["lr"] = lr_model
                 st.session_state.models["lgb"] = lgb_model
                 
-                # 训练集/测试集预测
+                # 학습集/테스트集 예측 결과 저장
                 st.session_state.data["X_train"] = X_train
                 st.session_state.data["X_test"] = X_test
                 st.session_state.data["y_train"] = y_train
                 st.session_state.data["y_test"] = y_test
                 
-                st.success("模型训练完成！")
-                st.markdown("✅ 已训练模型：")
-                st.markdown("- 逻辑回归（可解释性强）")
-                st.markdown("- LightGBM（高精度）")
-                st.markdown("- 混合模型（加权融合前两者）")
+                st.success("모델 학습 완료！")
+                st.markdown("✅ 학습된 모델：")
+                st.markdown("- 로지스틱 회귀（해석력 강함）")
+                st.markdown("- LightGBM（정확도 높음）")
+                st.markdown("- 하이브리드모형（전两者 가중融合）")
 
 # ----------------------
-# 步骤4：模型预测（单条/批量上传）
+# 단계 4：모델 예측（단일/일괄 업로드）
 # ----------------------
 elif st.session_state.step == 4:
-    st.subheader("🎯 模型预测")
+    st.subheader("🎯 모델 예측")
     
-    # 检查模型是否训练完成
+    # 모델 학습 완료 여부 확인
     if st.session_state.models["lr"] is None or st.session_state.models["lgb"] is None:
-        st.warning("请先完成「模型训练」步骤")
+        st.warning("먼저「모델 학습」단계를 완료하세요")
     else:
-        # 预测函数（复用预处理逻辑）
+        # 예측 함수（전처리 로직 재사용）
         def predict(input_data):
             X = input_data.copy()
             preprocess = st.session_state.preprocess
             num_cols = X.select_dtypes(include=["int64", "float64"]).columns
             cat_cols = X.select_dtypes(include=["object", "category"]).columns
             
-            # 数值型预处理
+            # 수치형 전처리
             X[num_cols] = preprocess["imputer"].transform(X[num_cols])
             X[num_cols] = preprocess["scaler"].transform(X[num_cols])
             
-            # 类别型预处理
+            # 범주형 전처리
             for col in cat_cols:
-                X[col] = X[col].fillna("未知").astype(str)
+                X[col] = X[col].fillna("알 수 없음").astype(str)
                 encoder = preprocess["encoders"][col]
                 
                 if isinstance(encoder, LabelEncoder):
-                    # 处理未见过的类别
-                    X[col] = X[col].replace([x for x in X[col].unique() if x not in encoder.classes_], "未知")
-                    if "未知" not in encoder.classes_:
-                        encoder.classes_ = np.append(encoder.classes_, "未知")
+                    # 미본적 범주 처리
+                    X[col] = X[col].replace([x for x in X[col].unique() if x not in encoder.classes_], "알 수 없음")
+                    if "알 수 없음" not in encoder.classes_:
+                        encoder.classes_ = np.append(encoder.classes_, "알 수 없음")
                     X[col] = encoder.transform(X[col])
                 else:  # OneHotEncoder
                     ohe, ohe_cols = encoder
                     ohe_result = ohe.transform(X[[col]])
                     X = pd.concat([X.drop(col, axis=1), pd.DataFrame(ohe_result, columns=ohe_cols)], axis=1)
             
-            # 确保特征列顺序一致
+            # 특징 열 순서 일치 보장
             X = X[preprocess["feature_cols"]]
             
-            # 混合模型预测
+            # 하이브리드모형 예측
             lr_weight = st.session_state.models["mixed_weights"]["lr"]
             lgb_weight = st.session_state.models["mixed_weights"]["lgb"]
             
-            if st.session_state.task == "分类":
+            if st.session_state.task == "logit":
                 lr_proba = st.session_state.models["lr"].predict_proba(X)[:, 1]
                 lgb_proba = st.session_state.models["lgb"].predict_proba(X)[:, 1]
                 mixed_proba = lr_weight * lr_proba + lgb_weight * lgb_proba
                 pred = (mixed_proba >= 0.5).astype(int)
                 return pred, mixed_proba
-            else:
+            else:  # 의사결정나무
                 lr_pred = st.session_state.models["lr"].predict(X)
                 lgb_pred = st.session_state.models["lgb"].predict(X)
                 mixed_pred = lr_weight * lr_pred + lgb_weight * lgb_pred
                 return mixed_pred, None
         
-        # 预测方式选择
-        predict_mode = st.radio("预测方式", options=["单条数据输入", "批量上传CSV"])
+        # 예측 방식 선택
+        predict_mode = st.radio("예측 방식", options=["단일 데이터 입력", "일괄 업로드 CSV"])
         
-        # 单条输入预测
-        if predict_mode == "单条数据输入":
-            st.markdown("#### 单条数据输入（请填写特征值）")
+        # 단일 입력 예측
+        if predict_mode == "단일 데이터 입력":
+            st.markdown("#### 단일 데이터 입력（특징값을 입력하세요）")
             feature_cols = st.session_state.preprocess["feature_cols"]
             input_data = {}
             
-            # 动态生成输入表单（根据特征类型）
+            # 특징 유형에 따라 동적으로 입력 폼 생성
             with st.form("single_pred_form"):
                 cols = st.columns(3)
-                for i, col in enumerate(feature_cols[:9]):  # 最多显示9个特征（避免界面拥挤）
+                for i, col in enumerate(feature_cols[:9]):  # 최대 9개 특징 표시（화면 혼잡 방지）
                     with cols[i % 3]:
-                        # 判断特征类型（数值/类别，基于预处理前的信息）
+                        # 특징 유형 판단（전처리 전 정보 기반）
                         if col in st.session_state.data["X_processed"].select_dtypes(include=["int64", "float64"]).columns:
                             input_data[col] = st.number_input(col, value=0.0)
                         else:
-                            # 类别特征：用训练集中的唯一值作为选项
-                            unique_vals = st.session_state.data["X_processed"][col].unique()[:10]  # 最多10个选项
+                            # 범주형 특징：학습集中의 고유값을 옵션으로 제시
+                            unique_vals = st.session_state.data["X_processed"][col].unique()[:10]  # 최대 10개 옵션
                             input_data[col] = st.selectbox(col, options=unique_vals)
                 
-                # 提交预测
-                submit_btn = st.form_submit_button("开始预测")
+                # 예측 제출
+                submit_btn = st.form_submit_button("예측 시작")
             
             if submit_btn:
                 input_df = pd.DataFrame([input_data])
                 pred, proba = predict(input_df)
                 
                 st.divider()
-                st.markdown("### 预测结果")
-                if st.session_state.task == "分类":
-                    st.metric("预测结果", "正类" if pred[0] == 1 else "负类")
-                    st.metric("正类概率", f"{proba[0]:.3f}" if proba is not None else "-")
-                else:
-                    st.metric("预测结果", f"{pred[0]:.2f}")
+                st.markdown("### 예측 결과")
+                if st.session_state.task == "logit":
+                    st.metric("예측 결과", "양성" if pred[0] == 1 else "음성")
+                    st.metric("양성 확률", f"{proba[0]:.3f}" if proba is not None else "-")
+                else:  # 의사결정나무
+                    st.metric("예측 결과", f"{pred[0]:.2f}")
         
-        # 批量上传预测
+        # 일괄 업로드 예측
         else:
-            st.markdown("#### 批量上传CSV预测")
-            uploaded_file = st.file_uploader("上传包含特征列的CSV文件", type=["csv"])
+            st.markdown("#### 일괄 업로드 CSV 예측")
+            uploaded_file = st.file_uploader("특징 열을 포함한 CSV 파일 업로드", type=["csv"])
             
             if uploaded_file is not None:
                 batch_df = pd.read_csv(uploaded_file)
-                st.metric("上传数据量", f"{len(batch_df):,} 行")
+                st.metric("업로드 데이터 양", f"{len(batch_df):,} 행")
                 st.dataframe(batch_df.head(3), use_container_width=True)
                 
-                if st.button("开始批量预测"):
-                    with st.spinner("预测中..."):
+                if st.button("일괄 예측 시작"):
+                    with st.spinner("예측 중..."):
                         pred, proba = predict(batch_df)
-                        batch_df["混合模型预测结果"] = pred
+                        batch_df["하이브리드모형 예측 결과"] = pred
                         if proba is not None:
-                            batch_df["正类概率"] = proba.round(3)
+                            batch_df["양성 확률"] = proba.round(3)
                         
                         st.divider()
-                        st.markdown("### 批量预测结果")
-                        st.dataframe(batch_df[["混合模型预测结果"] + (["正类概率"] if proba is not None else []) + feature_cols[:3]], use_container_width=True)
+                        st.markdown("### 일괄 예측 결과")
+                        st.dataframe(batch_df[["하이브리드모형 예측 결과"] + (["양성 확률"] if proba is not None else []) + feature_cols[:3]], use_container_width=True)
                         
-                        # 下载结果
+                        # 결과 다운로드
                         csv = batch_df.to_csv(index=False, encoding="utf-8-sig")
                         st.download_button(
-                            label="下载预测结果",
+                            label="예측 결과 다운로드",
                             data=csv,
-                            file_name="混合模型批量预测结果.csv",
+                            file_name="하이브리드모형_일괄예측결과.csv",
                             mime="text/csv"
                         )
 
 # ----------------------
-# 步骤5：效果评估（混合模型 vs 单一模型）
+# 단계 5：성능 평가（하이브리드모형 vs 단일 모형）
 # ----------------------
 elif st.session_state.step == 5:
-    st.subheader("📈 模型效果评估")
+    st.subheader("📈 모델 성능 평가")
     
     if st.session_state.models["lr"] is None or st.session_state.models["lgb"] is None:
-        st.warning("请先完成「模型训练」步骤")
+        st.warning("먼저「모델 학습」단계를 완료하세요")
     else:
         X_test = st.session_state.data["X_test"]
         y_test = st.session_state.data["y_test"]
@@ -452,8 +452,8 @@ elif st.session_state.step == 5:
         lr_weight = st.session_state.models["mixed_weights"]["lr"]
         lgb_weight = st.session_state.models["mixed_weights"]["lgb"]
         
-        # 计算各模型预测结果
-        if st.session_state.task == "分类":
+        # 각 모델 예측 결과 계산
+        if st.session_state.task == "logit":
             lr_pred = lr_model.predict(X_test)
             lgb_pred = lgb_model.predict(X_test)
             lr_proba = lr_model.predict_proba(X_test)[:, 1]
@@ -461,29 +461,29 @@ elif st.session_state.step == 5:
             mixed_proba = lr_weight * lr_proba + lgb_weight * lgb_proba
             mixed_pred = (mixed_proba >= 0.5).astype(int)
             
-            # 计算分类指标
+            # logit 지표 계산
             def calc_class_metrics(y_true, y_pred, y_proba):
                 acc = accuracy_score(y_true, y_pred)
                 fpr, tpr, _ = roc_curve(y_true, y_proba)
                 auc_score = auc(fpr, tpr)
-                return {"准确率": acc, "AUC": auc_score}
+                return {"정확도": acc, "AUC": auc_score}
             
             lr_metrics = calc_class_metrics(y_test, lr_pred, lr_proba)
             lgb_metrics = calc_class_metrics(y_test, lgb_pred, lgb_proba)
             mixed_metrics = calc_class_metrics(y_test, mixed_pred, mixed_proba)
             
             metrics_df = pd.DataFrame({
-                "模型": ["逻辑回归", "LightGBM", "混合模型"],
-                "准确率": [lr_metrics["准确率"], lgb_metrics["准确率"], mixed_metrics["准确率"]],
+                "모델": ["로지스틱 회귀", "LightGBM", "하이브리드모형"],
+                "정확도": [lr_metrics["정확도"], lgb_metrics["정확도"], mixed_metrics["정확도"]],
                 "AUC": [lr_metrics["AUC"], lgb_metrics["AUC"], mixed_metrics["AUC"]]
             }).round(3)
         
-        else:  # 回归
+        else:  # 의사결정나무
             lr_pred = lr_model.predict(X_test)
             lgb_pred = lgb_model.predict(X_test)
             mixed_pred = lr_weight * lr_pred + lgb_weight * lgb_pred
             
-            # 计算回归指标
+            # 의사결정나무 지표 계산
             def calc_reg_metrics(y_true, y_pred):
                 mae = mean_absolute_error(y_true, y_pred)
                 rmse = np.sqrt(mean_squared_error(y_true, y_pred))
@@ -495,63 +495,63 @@ elif st.session_state.step == 5:
             mixed_metrics = calc_reg_metrics(y_test, mixed_pred)
             
             metrics_df = pd.DataFrame({
-                "模型": ["逻辑回归", "LightGBM", "混合模型"],
+                "모델": ["로지스틱 회귀", "LightGBM", "하이브리드모형"],
                 "MAE": [lr_metrics["MAE"], lgb_metrics["MAE"], mixed_metrics["MAE"]],
                 "RMSE": [lr_metrics["RMSE"], lgb_metrics["RMSE"], mixed_metrics["RMSE"]],
                 "R²": [lr_metrics["R²"], lgb_metrics["R²"], mixed_metrics["R²"]]
             }).round(3)
         
-        # 展示指标对比
-        st.markdown("### 模型性能对比")
+        # 지표 비교 표시
+        st.markdown("### 모델 성능 비교")
         st.dataframe(metrics_df, use_container_width=True)
         
-        # 可视化对比
+        # 시각화 비교
         col1, col2 = st.columns(2)
         
-        # 分类任务可视化
-        if st.session_state.task == "分类":
+        # logit 작업 시각화
+        if st.session_state.task == "logit":
             with col1:
-                st.markdown("### ROC-AUC 曲线")
+                st.markdown("### ROC-AUC 곡선")
                 fpr_lr, tpr_lr, _ = roc_curve(y_test, lr_proba)
                 fpr_lgb, tpr_lgb, _ = roc_curve(y_test, lgb_proba)
                 fpr_mixed, tpr_mixed, _ = roc_curve(y_test, mixed_proba)
                 
                 fig_auc = go.Figure()
-                fig_auc.add_trace(go.Scatter(x=fpr_lr, y=tpr_lr, name=f"逻辑回归 (AUC={lr_metrics['AUC']:.3f})"))
+                fig_auc.add_trace(go.Scatter(x=fpr_lr, y=tpr_lr, name=f"로지스틱 회귀 (AUC={lr_metrics['AUC']:.3f})"))
                 fig_auc.add_trace(go.Scatter(x=fpr_lgb, y=tpr_lgb, name=f"LightGBM (AUC={lgb_metrics['AUC']:.3f})"))
-                fig_auc.add_trace(go.Scatter(x=fpr_mixed, y=tpr_mixed, name=f"混合模型 (AUC={mixed_metrics['AUC']:.3f})", line_dash="dash", line_width=3))
-                fig_auc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], name="随机猜测", line_color="gray", line_dash="dot"))
+                fig_auc.add_trace(go.Scatter(x=fpr_mixed, y=tpr_mixed, name=f"하이브리드모형 (AUC={mixed_metrics['AUC']:.3f})", line_dash="dash", line_width=3))
+                fig_auc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], name="랜덤 추측", line_color="gray", line_dash="dot"))
                 st.plotly_chart(fig_auc, use_container_width=True)
             
             with col2:
-                st.markdown("### 混淆矩阵（混合模型）")
+                st.markdown("### 혼동 행렬（하이브리드모형）")
                 cm = confusion_matrix(y_test, mixed_pred)
-                cm_df = pd.DataFrame(cm, index=["真实负类", "真实正类"], columns=["预测负类", "预测正类"])
+                cm_df = pd.DataFrame(cm, index=["실제 음성", "실제 양성"], columns=["예측 음성", "예측 양성"])
                 fig_cm = px.imshow(cm_df, text_auto=True, color_continuous_scale="Blues")
                 st.plotly_chart(fig_cm, use_container_width=True)
         
-        # 回归任务可视化
+        # 의사결정나무 작업 시각화
         else:
             with col1:
-                st.markdown("### 预测值 vs 真实值（混合模型）")
-                fig_pred = px.scatter(x=y_test, y=mixed_pred, title="真实值 vs 预测值", labels={"x": "真实值", "y": "预测值"})
-                fig_pred.add_trace(go.Scatter(x=[y_test.min(), y_test.max()], y=[y_test.min(), y_test.max()], line_color="red", name="理想拟合线"))
+                st.markdown("### 예측값 vs 실제값（하이브리드모형）")
+                fig_pred = px.scatter(x=y_test, y=mixed_pred, title="실제값 vs 예측값", labels={"x": "실제값", "y": "예측값"})
+                fig_pred.add_trace(go.Scatter(x=[y_test.min(), y_test.max()], y=[y_test.min(), y_test.max()], line_color="red", name="이상적인 피팅 라인"))
                 st.plotly_chart(fig_pred, use_container_width=True)
             
             with col2:
-                st.markdown("### 残差图（混合模型）")
+                st.markdown("### 잔차 그래프（하이브리드모형）")
                 residuals = y_test - mixed_pred
-                fig_res = px.scatter(x=mixed_pred, y=residuals, title="预测值 vs 残差", labels={"x": "预测值", "y": "残差"})
-                fig_res.add_trace(go.Scatter(x=[mixed_pred.min(), mixed_pred.max()], y=[0, 0], line_color="red", name="残差=0线"))
+                fig_res = px.scatter(x=mixed_pred, y=residuals, title="예측값 vs 잔차", labels={"x": "예측값", "y": "잔차"})
+                fig_res.add_trace(go.Scatter(x=[mixed_pred.min(), mixed_pred.max()], y=[0, 0], line_color="red", name="잔차=0 라인"))
                 st.plotly_chart(fig_res, use_container_width=True)
         
-        # 模型解释（特征重要性）
+        # 모델 해석（특징 중요도）
         st.divider()
-        st.markdown("### 模型解释：核心特征重要性")
+        st.markdown("### 모델 해석：핵심 특징 중요도")
         feature_importance = pd.DataFrame({
-            "特征名": st.session_state.preprocess["feature_cols"],
-            "重要性": lgb_model.feature_importances_
-        }).sort_values("重要性", ascending=False).head(10)
+            "특징명": st.session_state.preprocess["feature_cols"],
+            "중요도": lgb_model.feature_importances_
+        }).sort_values("중요도", ascending=False).head(10)
         
-        fig_importance = px.bar(feature_importance, x="重要性", y="特征名", orientation="h", color="重要性", color_continuous_scale="viridis")
+        fig_importance = px.bar(feature_importance, x="중요도", y="특징명", orientation="h", color="중요도", color_continuous_scale="viridis")
         st.plotly_chart(fig_importance, use_container_width=True)
