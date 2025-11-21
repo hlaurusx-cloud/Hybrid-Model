@@ -27,7 +27,7 @@ st.set_page_config(
 
 # 전역 상태 관리（각 단계 데이터/모델 저장，새로고침 시 손실 방지）
 if "step" not in st.session_state:
-    st.session_state.step = 0  # 0:초기화면 1:데이터업로드 2:데이터전처리 3:모델학습 4:예측 5:평가
+    st.session_state.step = 0  # 0:초기화면 1:데이터업로드 2:데이터시각화 3:데이터전처리 4:모델학습 5:예측 6:평가
 if "data" not in st.session_state:
     st.session_state.data = {"merged": None}  # 단일 파일만 저장
 if "preprocess" not in st.session_state:
@@ -44,8 +44,8 @@ if "task" not in st.session_state:
 st.sidebar.title("📌 하이브리드모형 작업 흐름")
 st.sidebar.divider()
 
-# 단계导航 버튼
-steps = ["초기 설정", "데이터 업로드", "데이터 전처리", "모델 학습", "모델 예측", "성능 평가"]
+# 단계导航 버튼（新增「데이터 시각화」단계）
+steps = ["초기 설정", "데이터 업로드", "데이터 시각화", "데이터 전처리", "모델 학습", "모델 예측", "성능 평가"]
 for i, step_name in enumerate(steps):
     if st.sidebar.button(step_name, key=f"btn_{i}"):
         st.session_state.step = i
@@ -55,7 +55,7 @@ st.sidebar.divider()
 st.sidebar.subheader("핵심 설정")
 st.session_state.task = st.sidebar.radio("작업 유형", options=["logit", "의사결정나무"], index=0)
 
-if st.session_state.step >= 3:  # 모델 학습 후 가중치 조정 가능
+if st.session_state.step >= 4:  # 모델 학습 후 가중치 조정 가능
     st.sidebar.subheader("하이브리드모형 가중치")
     reg_weight = st.sidebar.slider(
         "회귀 분석 가중치（해석력 강함）",
@@ -69,7 +69,7 @@ if st.session_state.step >= 3:  # 모델 학습 후 가중치 조정 가능
 # 3. 메인 페이지：단계별 내용 표시
 # ----------------------
 st.title("📊 하이브리드모형 동적 배포 프레임워크")
-st.markdown("**단일 원본 데이터 파일 업로드 후，전처리→학습→예측 전과정을 한 번에 완성**")
+st.markdown("**단일 원본 데이터 파일 업로드 후，시각화→전처리→학습→예측 전과정을 한 번에 완성**")
 st.markdown("### 🧩 핵심 모델：회귀 분석（Regression）+ 의사결정나무（Decision Tree）")
 st.divider()
 
@@ -82,10 +82,11 @@ if st.session_state.step == 0:
     본 프레임워크는 **데이터 수령 후 직접 업로드하여 사용**할 수 있으며，사전 전처리나 모델 학습이 필요 없습니다. 핵심 흐름은 다음과 같습니다：
     
     1. **데이터 업로드**：단일 원본 파일（CSV/Parquet/Excel）을 업로드
-    2. **데이터 전처리**：결측값 채우기、범주형 특징 인코딩
-    3. **모델 학습**：「회귀 분석+의사결정나무」하이브리드모형 학습
-    4. **모델 예측**：단일 데이터 입력 또는 일괄 업로드 예측을 지원
-    5. **성능 평가**：하이브리드모형과 단일 모형의 성능을 비교
+    2. **데이터 시각화**：범주형 변수와 수치형 변수를 선택하여 다양한 그래프로 데이터 탐색
+    3. **데이터 전처리**：결측값 채우기、범주형 특징 인코딩
+    4. **모델 학습**：「회귀 분석+의사결정나무」하이브리드모형 학습
+    5. **모델 예측**：단일 데이터 입력 또는 일괄 업로드 예측을 지원
+    6. **성능 평가**：하이브리드모형과 단일 모형의 성능을 비교
     
     ### 적용 가능场景
     - logit 작업（분류）：사용자가 서비스를 수락할지 여부、위반 여부等 이진 예측（모델：로지스틱 회귀+분류 의사결정나무）
@@ -139,14 +140,137 @@ elif st.session_state.step == 1:
             with col3:
                 st.write("**데이터 유형**")
                 st.write(df_merged.dtypes.value_counts().to_string())
+            
+            # 下一步 안내
+            st.divider()
+            st.info("📊 데이터 탐색을 위해 왼쪽 사이드바에서「데이터 시각화」단계로 이동하세요")
         
         except Exception as e:
             st.error(f"데이터 읽기 실패：{str(e)}")
 
 # ----------------------
-# 단계 2：데이터 전처리（단일 파일에 맞춰逻辑 수정）
+# 단계 2：데이터 시각화（新增！범주형x + 수치형y + 그래프 선택）
 # ----------------------
 elif st.session_state.step == 2:
+    st.subheader("📊 데이터 시각화")
+    
+    if st.session_state.data["merged"] is None:
+        st.warning("먼저「데이터 업로드」단계를 완료하세요")
+    else:
+        df = st.session_state.data["merged"]
+        
+        # 1. 변수 유형 자동识别
+        st.markdown("### 변수 선택")
+        # 범주형 변수（object, category）
+        cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
+        # 수치형 변수（int64, float64）
+        num_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
+        
+        #  변수 선택 박스（선택 가능하도록）
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            x_var = st.selectbox("📋 X축：범주형 변수", options=cat_cols, index=0 if cat_cols else None, disabled=not cat_cols)
+        with col2:
+            y_var = st.selectbox("📈 Y축：수치형 변수", options=num_cols, index=0 if num_cols else None, disabled=not num_cols)
+        with col3:
+            # 그래프 타입 선택（범주형x + 수치형y에 적합한 그래프）
+            graph_types = [
+                "막대 그래프（평균값）", 
+                "박스 플롯（분포）", 
+                "바이올린 플롯（분포+밀도）",
+                "산점도（개별 데이터）",
+                "선 그래프（추세）"
+            ]
+            graph_type = st.selectbox("📊 그래프 유형", options=graph_types, index=0)
+        
+        # 2. 그래프 그리기（조건에 맞춰 동적 생성）
+        st.divider()
+        if x_var and y_var:
+            st.markdown(f"### {x_var} vs {y_var} ({graph_type.split('（')[0]})")
+            
+            # 그래프 데이터 준비（결측값 제거）
+            plot_df = df[[x_var, y_var]].dropna()
+            
+            try:
+                # 그래프 타입에 따라 plotly 그리기
+                if graph_type == "막대 그래프（평균값）":
+                    # 각 범주별 y_var 평균값 계산
+                    bar_data = plot_df.groupby(x_var)[y_var].mean().reset_index()
+                    fig = px.bar(
+                        bar_data, x=x_var, y=y_var, 
+                        title=f"{x_var}별 {y_var} 평균값",
+                        labels={y_var: f"{y_var} 평균값", x_var: x_var},
+                        color=x_var, color_discrete_sequence=px.colors.qualitative.Pastel
+                    )
+                
+                elif graph_type == "박스 플롯（분포）":
+                    fig = px.box(
+                        plot_df, x=x_var, y=y_var,
+                        title=f"{x_var}별 {y_var} 분포",
+                        labels={y_var: y_var, x_var: x_var},
+                        color=x_var, color_discrete_sequence=px.colors.qualitative.Set2
+                    )
+                
+                elif graph_type == "바이올린 플롯（분포+밀도）":
+                    fig = px.violin(
+                        plot_df, x=x_var, y=y_var,
+                        title=f"{x_var}별 {y_var} 분포 및 밀도",
+                        labels={y_var: y_var, x_var: x_var},
+                        color=x_var, box=True,  # 박스 플롯 포함
+                        color_discrete_sequence=px.colors.qualitative.Set3
+                    )
+                
+                elif graph_type == "산점도（개별 데이터）":
+                    fig = px.scatter(
+                        plot_df, x=x_var, y=y_var,
+                        title=f"{x_var} vs {y_var} 개별 데이터 분포",
+                        labels={y_var: y_var, x_var: x_var},
+                        color=x_var, opacity=0.6,
+                        color_discrete_sequence=px.colors.qualitative.Vivid
+                    )
+                
+                elif graph_type == "선 그래프（추세）":
+                    # 범주형 변수를 순서대로 정렬
+                    line_data = plot_df.groupby(x_var)[y_var].mean().reset_index()
+                    fig = px.line(
+                        line_data, x=x_var, y=y_var,
+                        title=f"{x_var}별 {y_var} 추세",
+                        labels={y_var: y_var, x_var: x_var},
+                        color_discrete_sequence=["#1f77b4"],
+                        markers=True
+                    )
+                
+                # 그래프 스타일 최적화
+                fig.update_layout(
+                    width=1200, height=600,
+                    xaxis_title_font=dict(size=14),
+                    yaxis_title_font=dict(size=14),
+                    title_font=dict(size=16, weight="bold")
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # 3. 통계 정보 표시
+                st.markdown("### 📋 통계 정보")
+                stats_df = plot_df.groupby(x_var)[y_var].agg([
+                    "count", "mean", "std", "min", "25%", "50%", "75%", "max"
+                ]).round(3)
+                stats_df.columns = ["데이터 개수", "평균값", "표준편차", "최소값", "제1사분위수", "중앙값", "제3사분위수", "최대값"]
+                st.dataframe(stats_df, use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"그래프 생성 실패：{str(e)}")
+        else:
+            st.warning("범주형 변수(X)와 수치형 변수(Y)를 모두 선택해야 합니다")
+        
+        # 下一步 안내
+        st.divider()
+        st.info("🔧 데이터 전처리를 위해 왼쪽 사이드바에서「데이터 전처리」단계로 이동하세요")
+
+# ----------------------
+# 단계 3：데이터 전처리（단일 파일에 맞춰逻辑 수정）
+# ----------------------
+elif st.session_state.step == 3:
     st.subheader("🧹 데이터 전처리")
     
     if st.session_state.data["merged"] is None:
@@ -246,9 +370,9 @@ elif st.session_state.step == 2:
                 st.error(f"전처리 실패：{str(e)}")
 
 # ----------------------
-# 단계 3：모델 학습（하이브리드모형：회귀 분석+의사결정나무）
+# 단계 4：모델 학습（하이브리드모형：회귀 분석+의사결정나무）
 # ----------------------
-elif st.session_state.step == 3:
+elif st.session_state.step == 4:
     st.subheader("🚀 하이브리드모형 학습（회귀 분석 + 의사결정나무）")
     
     # 전처리 완료 여부 확인
@@ -298,9 +422,9 @@ elif st.session_state.step == 3:
                 st.markdown("- 하이브리드모형（전两者 가중融合）")
 
 # ----------------------
-# 단계 4：모델 예측（단일/일괄 업로드）
+# 단계 5：모델 예측（단일/일괄 업로드）
 # ----------------------
-elif st.session_state.step == 4:
+elif st.session_state.step == 5:
     st.subheader("🎯 모델 예측")
     
     # 모델 학습 완료 여부 확인
@@ -432,9 +556,9 @@ elif st.session_state.step == 4:
                             )
 
 # ----------------------
-# 단계 5：성능 평가（하이브리드모형 vs 단일 모형）
+# 단계 6：성능 평가（하이브리드모형 vs 단일 모형）
 # ----------------------
-elif st.session_state.step == 5:
+elif st.session_state.step == 6:
     st.subheader("📈 모델 성능 평가")
     
     if st.session_state.models["regression"] is None or st.session_state.models["decision_tree"] is None:
