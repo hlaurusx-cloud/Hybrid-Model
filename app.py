@@ -149,7 +149,7 @@ elif st.session_state.step == 1:
             st.error(f"데이터 읽기 실패：{str(e)}")
 
 # ----------------------
-# 단계 2：데이터 시각화（新增！범주형x + 수치형y + 그래프 선택）
+# 단계 2：데이터 시각화（新增！히스토그램 기능 추가）
 # ----------------------
 elif st.session_state.step == 2:
     st.subheader("📊 데이터 시각화")
@@ -169,99 +169,162 @@ elif st.session_state.step == 2:
         #  변수 선택 박스（선택 가능하도록）
         col1, col2, col3 = st.columns(3)
         with col1:
-            x_var = st.selectbox("📋 X축：범주형 변수", options=cat_cols, index=0 if cat_cols else None, disabled=not cat_cols)
+            x_var = st.selectbox("📋 X축：범주형 변수（선택 사항）", options=["선택 안 함"] + cat_cols, index=0)
+            # X축이 "선택 안 함"인 경우 None 처리
+            x_var = None if x_var == "선택 안 함" else x_var
         with col2:
-            y_var = st.selectbox("📈 Y축：수치형 변수", options=num_cols, index=0 if num_cols else None, disabled=not num_cols)
+            y_var = st.selectbox("📈 Y축：수치형 변수（필수）", options=num_cols, index=0 if num_cols else None, disabled=not num_cols)
         with col3:
-            # 그래프 타입 선택（범주형x + 수치형y에 적합한 그래프）
+            # 그래프 타입 선택（新增 히스토그램选项）
             graph_types = [
                 "막대 그래프（평균값）", 
                 "박스 플롯（분포）", 
                 "바이올린 플롯（분포+밀도）",
                 "산점도（개별 데이터）",
-                "선 그래프（추세）"
+                "선 그래프（추세）",
+                "히스토그램（분포）"  # 新增：히스토그램
             ]
             graph_type = st.selectbox("📊 그래프 유형", options=graph_types, index=0)
         
-        # 2. 그래프 그리기（조건에 맞춰 동적 생성）
+        # 2. 그래프 그리기（新增 히스토그램绘制逻辑）
         st.divider()
-        if x_var and y_var:
-            st.markdown(f"### {x_var} vs {y_var} ({graph_type.split('（')[0]})")
+        if y_var:  # Y축（수치형 변수）만 있어도 히스토그램 가능
+            if graph_type == "히스토그램（분포）":
+                st.markdown(f"### {y_var} 분포（히스토그램）")
+                
+                # 그래프 데이터 준비（결측값 제거）
+                plot_df = df[[y_var] + ([x_var] if x_var else [])].dropna()
+                
+                try:
+                    # 히스토그램 옵션（구간 개수 조정）
+                    bins = st.slider("히스토그램 구간 개수", min_value=10, max_value=100, value=30, step=5)
+                    
+                    # X축（범주형 변수） 선택 여부에 따라 그래프 분기
+                    if x_var:  # 按类别分组的 히스토그램
+                        fig = px.histogram(
+                            plot_df, 
+                            x=y_var,
+                            color=x_var,  # 按类别区分颜色
+                            barmode="overlay",  # 重叠显示
+                            opacity=0.7,
+                            nbins=bins,
+                            title=f"{x_var}별 {y_var} 분포",
+                            labels={y_var: y_var, x_var: x_var},
+                            color_discrete_sequence=px.colors.qualitative.Pastel
+                        )
+                    else:  # 单变量 히스토그램
+                        fig = px.histogram(
+                            plot_df,
+                            x=y_var,
+                            nbins=bins,
+                            title=f"{y_var} 전체 분포",
+                            labels={y_var: y_var, "count": "빈도수"},
+                            color_discrete_sequence=["#636EFA"],
+                            marginal="box"  # 边缘添加 박스 플롯（분포 정보 강화）
+                        )
+                    
+                    # 그래프 스타일 최적화
+                    fig.update_layout(
+                        width=1200, height=600,
+                        xaxis_title_font=dict(size=14),
+                        yaxis_title_font=dict(size=14),
+                        title_font=dict(size=16, weight="bold")
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # 히스토그램 통계 정보
+                    st.markdown("### 📋 분포 통계 정보")
+                    stats = plot_df[y_var].describe().round(3)
+                    stats_df = pd.DataFrame({
+                        "통계량": ["개수", "평균값", "표준편차", "최소값", "제1사분위수", "중앙값", "제3사분위수", "최대값"],
+                        "값": [
+                            stats["count"], stats["mean"], stats["std"],
+                            stats["min"], stats["25%"], stats["50%"],
+                            stats["75%"], stats["max"]
+                        ]
+                    })
+                    st.dataframe(stats_df, use_container_width=True)
+                
+                except Exception as e:
+                    st.error(f"히스토그램 생성 실패：{str(e)}")
             
-            # 그래프 데이터 준비（결측값 제거）
-            plot_df = df[[x_var, y_var]].dropna()
-            
-            try:
-                # 그래프 타입에 따라 plotly 그리기
-                if graph_type == "막대 그래프（평균값）":
-                    # 각 범주별 y_var 평균값 계산
-                    bar_data = plot_df.groupby(x_var)[y_var].mean().reset_index()
-                    fig = px.bar(
-                        bar_data, x=x_var, y=y_var, 
-                        title=f"{x_var}별 {y_var} 평균값",
-                        labels={y_var: f"{y_var} 평균값", x_var: x_var},
-                        color=x_var, color_discrete_sequence=px.colors.qualitative.Pastel
+            # 기존 그래프逻辑（保持不变）
+            else:
+                if not x_var:
+                    st.warning("막대 그래프/박스 플롯/바이올린 플롯/산점도/선 그래프는 X축（범주형 변수）를 선택해야 합니다")
+                    st.stop()
+                
+                st.markdown(f"### {x_var} vs {y_var} ({graph_type.split('（')[0]})")
+                plot_df = df[[x_var, y_var]].dropna()
+                
+                try:
+                    if graph_type == "막대 그래프（평균값）":
+                        bar_data = plot_df.groupby(x_var)[y_var].mean().reset_index()
+                        fig = px.bar(
+                            bar_data, x=x_var, y=y_var, 
+                            title=f"{x_var}별 {y_var} 평균값",
+                            labels={y_var: f"{y_var} 평균값", x_var: x_var},
+                            color=x_var, color_discrete_sequence=px.colors.qualitative.Pastel
+                        )
+                    
+                    elif graph_type == "박스 플롯（분포）":
+                        fig = px.box(
+                            plot_df, x=x_var, y=y_var,
+                            title=f"{x_var}별 {y_var} 분포",
+                            labels={y_var: y_var, x_var: x_var},
+                            color=x_var, color_discrete_sequence=px.colors.qualitative.Set2
+                        )
+                    
+                    elif graph_type == "바이올린 플롯（분포+밀도）":
+                        fig = px.violin(
+                            plot_df, x=x_var, y=y_var,
+                            title=f"{x_var}별 {y_var} 분포 및 밀도",
+                            labels={y_var: y_var, x_var: x_var},
+                            color=x_var, box=True,
+                            color_discrete_sequence=px.colors.qualitative.Set3
+                        )
+                    
+                    elif graph_type == "산점도（개별 데이터）":
+                        fig = px.scatter(
+                            plot_df, x=x_var, y=y_var,
+                            title=f"{x_var} vs {y_var} 개별 데이터 분포",
+                            labels={y_var: y_var, x_var: x_var},
+                            color=x_var, opacity=0.6,
+                            color_discrete_sequence=px.colors.qualitative.Vivid
+                        )
+                    
+                    elif graph_type == "선 그래프（추세）":
+                        line_data = plot_df.groupby(x_var)[y_var].mean().reset_index()
+                        fig = px.line(
+                            line_data, x=x_var, y=y_var,
+                            title=f"{x_var}별 {y_var} 추세",
+                            labels={y_var: y_var, x_var: x_var},
+                            color_discrete_sequence=["#1f77b4"],
+                            markers=True
+                        )
+                    
+                    fig.update_layout(
+                        width=1200, height=600,
+                        xaxis_title_font=dict(size=14),
+                        yaxis_title_font=dict(size=14),
+                        title_font=dict(size=16, weight="bold")
                     )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # 기존 통계 정보
+                    st.markdown("### 📋 통계 정보")
+                    stats_df = plot_df.groupby(x_var)[y_var].agg([
+                        "count", "mean", "std", "min", "25%", "50%", "75%", "max"
+                    ]).round(3)
+                    stats_df.columns = ["데이터 개수", "평균값", "표준편차", "최소값", "제1사분위수", "중앙값", "제3사분위수", "최대값"]
+                    st.dataframe(stats_df, use_container_width=True)
                 
-                elif graph_type == "박스 플롯（분포）":
-                    fig = px.box(
-                        plot_df, x=x_var, y=y_var,
-                        title=f"{x_var}별 {y_var} 분포",
-                        labels={y_var: y_var, x_var: x_var},
-                        color=x_var, color_discrete_sequence=px.colors.qualitative.Set2
-                    )
-                
-                elif graph_type == "바이올린 플롯（분포+밀도）":
-                    fig = px.violin(
-                        plot_df, x=x_var, y=y_var,
-                        title=f"{x_var}별 {y_var} 분포 및 밀도",
-                        labels={y_var: y_var, x_var: x_var},
-                        color=x_var, box=True,  # 박스 플롯 포함
-                        color_discrete_sequence=px.colors.qualitative.Set3
-                    )
-                
-                elif graph_type == "산점도（개별 데이터）":
-                    fig = px.scatter(
-                        plot_df, x=x_var, y=y_var,
-                        title=f"{x_var} vs {y_var} 개별 데이터 분포",
-                        labels={y_var: y_var, x_var: x_var},
-                        color=x_var, opacity=0.6,
-                        color_discrete_sequence=px.colors.qualitative.Vivid
-                    )
-                
-                elif graph_type == "선 그래프（추세）":
-                    # 범주형 변수를 순서대로 정렬
-                    line_data = plot_df.groupby(x_var)[y_var].mean().reset_index()
-                    fig = px.line(
-                        line_data, x=x_var, y=y_var,
-                        title=f"{x_var}별 {y_var} 추세",
-                        labels={y_var: y_var, x_var: x_var},
-                        color_discrete_sequence=["#1f77b4"],
-                        markers=True
-                    )
-                
-                # 그래프 스타일 최적화
-                fig.update_layout(
-                    width=1200, height=600,
-                    xaxis_title_font=dict(size=14),
-                    yaxis_title_font=dict(size=14),
-                    title_font=dict(size=16, weight="bold")
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # 3. 통계 정보 표시
-                st.markdown("### 📋 통계 정보")
-                stats_df = plot_df.groupby(x_var)[y_var].agg([
-                    "count", "mean", "std", "min", "25%", "50%", "75%", "max"
-                ]).round(3)
-                stats_df.columns = ["데이터 개수", "평균값", "표준편차", "최소값", "제1사분위수", "중앙값", "제3사분위수", "최대값"]
-                st.dataframe(stats_df, use_container_width=True)
-                
-            except Exception as e:
-                st.error(f"그래프 생성 실패：{str(e)}")
+                except Exception as e:
+                    st.error(f"그래프 생성 실패：{str(e)}")
         else:
-            st.warning("범주형 변수(X)와 수치형 변수(Y)를 모두 선택해야 합니다")
+            st.warning("Y축（수치형 변수）를 선택해야 합니다")
         
         # 下一步 안내
         st.divider()
