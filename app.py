@@ -7,12 +7,12 @@ import plotly.graph_objects as go
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.linear_model import LinearRegression, LogisticRegression  # 回归分析核心模型
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor  # 决策树核心模型
 from sklearn.metrics import (
     accuracy_score, auc, roc_curve, confusion_matrix,
     mean_absolute_error, mean_squared_error, r2_score
 )
-from lightgbm import LGBMClassifier, LGBMRegressor
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -20,7 +20,7 @@ warnings.filterwarnings("ignore")
 # 1. 페이지 기본 설정
 # ----------------------
 st.set_page_config(
-    page_title="하이브리드모형 동적 프레임워크",
+    page_title="하이브리드모형 동적 프레임워크（의사결정나무+회귀분석）",
     page_icon="📊",
     layout="wide"
 )
@@ -33,9 +33,10 @@ if "data" not in st.session_state:
 if "preprocess" not in st.session_state:
     st.session_state.preprocess = {"imputer": None, "scaler": None, "encoders": None, "feature_cols": None, "target_col": None}
 if "models" not in st.session_state:
-    st.session_state.models = {"lr": None, "lgb": None, "mixed_weights": {"lr": 0.3, "lgb": 0.7}}
+    # 模型替换：regression（회귀분석）、decision_tree（의사결정나무）
+    st.session_state.models = {"regression": None, "decision_tree": None, "mixed_weights": {"regression": 0.3, "decision_tree": 0.7}}
 if "task" not in st.session_state:
-    st.session_state.task = "logit"  # 기본값 logit，의사결정나무로 전환 가능
+    st.session_state.task = "logit"  # 기본값 logit（분류），의사결정나무（회귀）로 전환 가능
 
 # ----------------------
 # 2. 사이드바：단계导航 + 핵심 설정
@@ -56,19 +57,20 @@ st.session_state.task = st.sidebar.radio("작업 유형", options=["logit", "의
 
 if st.session_state.step >= 3:  # 모델 학습 후 가중치 조정 가능
     st.sidebar.subheader("하이브리드모형 가중치")
-    lr_weight = st.sidebar.slider(
-        "로지스틱 회귀 가중치（해석력 강함）",
-        min_value=0.0, max_value=1.0, value=st.session_state.models["mixed_weights"]["lr"], step=0.1
+    reg_weight = st.sidebar.slider(
+        "회귀 분석 가중치（해석력 강함）",
+        min_value=0.0, max_value=1.0, value=st.session_state.models["mixed_weights"]["regression"], step=0.1
     )
-    st.session_state.models["mixed_weights"]["lr"] = lr_weight
-    st.session_state.models["mixed_weights"]["lgb"] = 1 - lr_weight
-    st.sidebar.text(f"LightGBM 가중치（정확도 높음）：{1 - lr_weight:.1f}")
+    st.session_state.models["mixed_weights"]["regression"] = reg_weight
+    st.session_state.models["mixed_weights"]["decision_tree"] = 1 - reg_weight
+    st.sidebar.text(f"의사결정나무 가중치（정확도 높음）：{1 - reg_weight:.1f}")
 
 # ----------------------
 # 3. 메인 페이지：단계별 내용 표시
 # ----------------------
 st.title("📊 하이브리드모형 동적 배포 프레임워크")
 st.markdown("**accept/genied 원본 데이터 업로드 후，전처리→학습→예측 전과정을 한 번에 완성**")
+st.markdown("### 🧩 핵심 모델：회귀 분석（Regression）+ 의사결정나무（Decision Tree）")
 st.divider()
 
 # ----------------------
@@ -81,13 +83,13 @@ if st.session_state.step == 0:
     
     1. **데이터 업로드**：accept와 genied 두 개의 원본 파일（CSV/Parquet/Excel）을 업로드
     2. **데이터 전처리**：데이터 병합、결측값 채우기、범주형 특징 인코딩
-    3. **모델 학습**：「로지스틱 회귀+LightGBM」하이브리드모형 학습
+    3. **모델 학습**：「회귀 분석+의사결정나무」하이브리드모형 학습
     4. **모델 예측**：단일 데이터 입력 또는 일괄 업로드 예측을 지원
     5. **성능 평가**：하이브리드모형과 단일 모형의 성능을 비교
     
     ### 적용 가능场景
-    - logit 작업（예：사용자가 서비스를 수락할지 여부 예측、위반 여부 예측）
-    - 의사결정나무 작업（예：판매량、금액、평점 예측）
+    - logit 작업（분류）：사용자가 서비스를 수락할지 여부、위반 여부等 이진 예측（모델：로지스틱 회귀+분류 의사결정나무）
+    - 의사결정나무 작업（회귀）：판매량、금액、평점等 연속값 예측（모델：선형 회귀+회귀 의사결정나무）
     
     ### 왼쪽「데이터 업로드」를 클릭하여 사용을 시작하세요！
     """)
@@ -265,10 +267,10 @@ elif st.session_state.step == 2:
                 st.error(f"전처리 실패：{str(e)}")
 
 # ----------------------
-# 단계 3：모델 학습（하이브리드모형：로지스틱 회귀+LightGBM）
+# 단계 3：모델 학습（하이브리드모형：회귀 분석+의사결정나무）
 # ----------------------
 elif st.session_state.step == 3:
-    st.subheader("🚀 하이브리드모형 학습")
+    st.subheader("🚀 하이브리드모형 학습（회귀 분석 + 의사결정나무）")
     
     # 전처리 완료 여부 확인
     if "X_processed" not in st.session_state.data or "y_processed" not in st.session_state.data:
@@ -280,28 +282,31 @@ elif st.session_state.step == 3:
         # 데이터 분할（학습集+테스트集）
         st.markdown("### 학습 설정")
         test_size = st.slider("테스트集 비율", min_value=0.1, max_value=0.3, value=0.2, step=0.05)
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y if st.session_state.task == "logit" else None)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=42, 
+            stratify=y if st.session_state.task == "logit" else None
+        )
         
         # 모델 선택（작업 유형에 따라）
-        if st.session_state.task == "logit":
-            lr_model = LogisticRegression(max_iter=1000)
-            lgb_model = LGBMClassifier(n_estimators=100, learning_rate=0.1, random_state=42)
-        else:  # 의사결정나무（회귀任务）
-            lr_model = LinearRegression()
-            lgb_model = LGBMRegressor(n_estimators=100, learning_rate=0.1, random_state=42)
+        if st.session_state.task == "logit":  # 분류任务：로지스틱 회귀（회귀분석）+ 분류 의사결정나무
+            reg_model = LogisticRegression(max_iter=1000)  # 分类用 회귀분석（로지스틱）
+            dt_model = DecisionTreeClassifier(random_state=42, max_depth=10)  # 分类 의사결정나무
+        else:  # 회귀任务：선형 회귀（회귀분석）+ 회귀 의사결정나무
+            reg_model = LinearRegression()  # 回归用 회귀분석（선형）
+            dt_model = DecisionTreeRegressor(random_state=42, max_depth=10)  # 回归 의사결정나무
         
         # 모델 학습
         if st.button("모델 학습 시작"):
             with st.spinner("모델 학습 중..."):
                 # 단일 모델 학습
-                lr_model.fit(X_train, y_train)
-                lgb_model.fit(X_train, y_train)
+                reg_model.fit(X_train, y_train)
+                dt_model.fit(X_train, y_train)
                 
                 # 모델 저장
-                st.session_state.models["lr"] = lr_model
-                st.session_state.models["lgb"] = lgb_model
+                st.session_state.models["regression"] = reg_model
+                st.session_state.models["decision_tree"] = dt_model
                 
-                # 학습集/테스트集 예측 결과 저장
+                # 학습集/테스트集 저장
                 st.session_state.data["X_train"] = X_train
                 st.session_state.data["X_test"] = X_test
                 st.session_state.data["y_train"] = y_train
@@ -309,8 +314,8 @@ elif st.session_state.step == 3:
                 
                 st.success("모델 학습 완료！")
                 st.markdown("✅ 학습된 모델：")
-                st.markdown("- 로지스틱 회귀（해석력 강함）")
-                st.markdown("- LightGBM（정확도 높음）")
+                st.markdown("- 회귀 분석（로지스틱/선형，해석력 강함）")
+                st.markdown("- 의사결정나무（분류/회귀，정확도 높음）")
                 st.markdown("- 하이브리드모형（전两者 가중融合）")
 
 # ----------------------
@@ -320,10 +325,10 @@ elif st.session_state.step == 4:
     st.subheader("🎯 모델 예측")
     
     # 모델 학습 완료 여부 확인
-    if st.session_state.models["lr"] is None or st.session_state.models["lgb"] is None:
+    if st.session_state.models["regression"] is None or st.session_state.models["decision_tree"] is None:
         st.warning("먼저「모델 학습」단계를 완료하세요")
     else:
-        # 예측 함수（전처리 로직 재사용）
+        # 예측 함수（전처리 로직 재사용 + 新模型适配）
         def predict(input_data):
             X = input_data.copy()
             preprocess = st.session_state.preprocess
@@ -353,20 +358,22 @@ elif st.session_state.step == 4:
             # 특징 열 순서 일치 보장
             X = X[preprocess["feature_cols"]]
             
-            # 하이브리드모형 예측
-            lr_weight = st.session_state.models["mixed_weights"]["lr"]
-            lgb_weight = st.session_state.models["mixed_weights"]["lgb"]
+            # 하이브리드모형 예측（가중融合）
+            reg_weight = st.session_state.models["mixed_weights"]["regression"]
+            dt_weight = st.session_state.models["mixed_weights"]["decision_tree"]
+            reg_model = st.session_state.models["regression"]
+            dt_model = st.session_state.models["decision_tree"]
             
-            if st.session_state.task == "logit":
-                lr_proba = st.session_state.models["lr"].predict_proba(X)[:, 1]
-                lgb_proba = st.session_state.models["lgb"].predict_proba(X)[:, 1]
-                mixed_proba = lr_weight * lr_proba + lgb_weight * lgb_proba
+            if st.session_state.task == "logit":  # 분류 예측
+                reg_proba = reg_model.predict_proba(X)[:, 1]  # 로지스틱 회귀 확률
+                dt_proba = dt_model.predict_proba(X)[:, 1]    # 의사결정나무 확률
+                mixed_proba = reg_weight * reg_proba + dt_weight * dt_proba
                 pred = (mixed_proba >= 0.5).astype(int)
                 return pred, mixed_proba
-            else:  # 의사결정나무
-                lr_pred = st.session_state.models["lr"].predict(X)
-                lgb_pred = st.session_state.models["lgb"].predict(X)
-                mixed_pred = lr_weight * lr_pred + lgb_weight * lgb_pred
+            else:  # 회귀 예측
+                reg_pred = reg_model.predict(X)  # 선형 회귀 예측값
+                dt_pred = dt_model.predict(X)    # 의사결정나무 예측값
+                mixed_pred = reg_weight * reg_pred + dt_weight * dt_pred
                 return mixed_pred, None
         
         # 예측 방식 선택
@@ -383,7 +390,7 @@ elif st.session_state.step == 4:
                 cols = st.columns(3)
                 for i, col in enumerate(feature_cols[:9]):  # 최대 9개 특징 표시（화면 혼잡 방지）
                     with cols[i % 3]:
-                        # 특징 유형 판단（전처리 전 정보 기반）
+                        # 특징 유형 판단（수치/범주）
                         if col in st.session_state.data["X_processed"].select_dtypes(include=["int64", "float64"]).columns:
                             input_data[col] = st.number_input(col, value=0.0)
                         else:
@@ -403,7 +410,7 @@ elif st.session_state.step == 4:
                 if st.session_state.task == "logit":
                     st.metric("예측 결과", "양성" if pred[0] == 1 else "음성")
                     st.metric("양성 확률", f"{proba[0]:.3f}" if proba is not None else "-")
-                else:  # 의사결정나무
+                else:  # 의사결정나무（회귀）
                     st.metric("예측 결과", f"{pred[0]:.2f}")
         
         # 일괄 업로드 예측
@@ -425,7 +432,10 @@ elif st.session_state.step == 4:
                         
                         st.divider()
                         st.markdown("### 일괄 예측 결과")
-                        st.dataframe(batch_df[["하이브리드모형 예측 결과"] + (["양성 확률"] if proba is not None else []) + feature_cols[:3]], use_container_width=True)
+                        st.dataframe(
+                            batch_df[["하이브리드모형 예측 결과"] + (["양성 확률"] if proba is not None else []) + feature_cols[:3]],
+                            use_container_width=True
+                        )
                         
                         # 결과 다운로드
                         csv = batch_df.to_csv(index=False, encoding="utf-8-sig")
@@ -442,63 +452,63 @@ elif st.session_state.step == 4:
 elif st.session_state.step == 5:
     st.subheader("📈 모델 성능 평가")
     
-    if st.session_state.models["lr"] is None or st.session_state.models["lgb"] is None:
+    if st.session_state.models["regression"] is None or st.session_state.models["decision_tree"] is None:
         st.warning("먼저「모델 학습」단계를 완료하세요")
     else:
         X_test = st.session_state.data["X_test"]
         y_test = st.session_state.data["y_test"]
-        lr_model = st.session_state.models["lr"]
-        lgb_model = st.session_state.models["lgb"]
-        lr_weight = st.session_state.models["mixed_weights"]["lr"]
-        lgb_weight = st.session_state.models["mixed_weights"]["lgb"]
+        reg_model = st.session_state.models["regression"]
+        dt_model = st.session_state.models["decision_tree"]
+        reg_weight = st.session_state.models["mixed_weights"]["regression"]
+        dt_weight = st.session_state.models["mixed_weights"]["decision_tree"]
         
         # 각 모델 예측 결과 계산
-        if st.session_state.task == "logit":
-            lr_pred = lr_model.predict(X_test)
-            lgb_pred = lgb_model.predict(X_test)
-            lr_proba = lr_model.predict_proba(X_test)[:, 1]
-            lgb_proba = lgb_model.predict_proba(X_test)[:, 1]
-            mixed_proba = lr_weight * lr_proba + lgb_weight * lgb_proba
+        if st.session_state.task == "logit":  # 분류任务 평가
+            reg_pred = reg_model.predict(X_test)
+            dt_pred = dt_model.predict(X_test)
+            reg_proba = reg_model.predict_proba(X_test)[:, 1]
+            dt_proba = dt_model.predict_proba(X_test)[:, 1]
+            mixed_proba = reg_weight * reg_proba + dt_weight * dt_proba
             mixed_pred = (mixed_proba >= 0.5).astype(int)
             
-            # logit 지표 계산
+            # 분류 지표 계산
             def calc_class_metrics(y_true, y_pred, y_proba):
                 acc = accuracy_score(y_true, y_pred)
                 fpr, tpr, _ = roc_curve(y_true, y_proba)
                 auc_score = auc(fpr, tpr)
                 return {"정확도": acc, "AUC": auc_score}
             
-            lr_metrics = calc_class_metrics(y_test, lr_pred, lr_proba)
-            lgb_metrics = calc_class_metrics(y_test, lgb_pred, lgb_proba)
+            reg_metrics = calc_class_metrics(y_test, reg_pred, reg_proba)
+            dt_metrics = calc_class_metrics(y_test, dt_pred, dt_proba)
             mixed_metrics = calc_class_metrics(y_test, mixed_pred, mixed_proba)
             
             metrics_df = pd.DataFrame({
-                "모델": ["로지스틱 회귀", "LightGBM", "하이브리드모형"],
-                "정확도": [lr_metrics["정확도"], lgb_metrics["정확도"], mixed_metrics["정확도"]],
-                "AUC": [lr_metrics["AUC"], lgb_metrics["AUC"], mixed_metrics["AUC"]]
+                "모델": ["회귀 분석（로지스틱）", "의사결정나무（분류）", "하이브리드모형"],
+                "정확도": [reg_metrics["정확도"], dt_metrics["정확도"], mixed_metrics["정확도"]],
+                "AUC": [reg_metrics["AUC"], dt_metrics["AUC"], mixed_metrics["AUC"]]
             }).round(3)
         
-        else:  # 의사결정나무
-            lr_pred = lr_model.predict(X_test)
-            lgb_pred = lgb_model.predict(X_test)
-            mixed_pred = lr_weight * lr_pred + lgb_weight * lgb_pred
+        else:  # 회귀任务 평가
+            reg_pred = reg_model.predict(X_test)
+            dt_pred = dt_model.predict(X_test)
+            mixed_pred = reg_weight * reg_pred + dt_weight * dt_pred
             
-            # 의사결정나무 지표 계산
+            # 회귀 지표 계산
             def calc_reg_metrics(y_true, y_pred):
                 mae = mean_absolute_error(y_true, y_pred)
                 rmse = np.sqrt(mean_squared_error(y_true, y_pred))
                 r2 = r2_score(y_true, y_pred)
                 return {"MAE": mae, "RMSE": rmse, "R²": r2}
             
-            lr_metrics = calc_reg_metrics(y_test, lr_pred)
-            lgb_metrics = calc_reg_metrics(y_test, lgb_pred)
+            reg_metrics = calc_reg_metrics(y_test, reg_pred)
+            dt_metrics = calc_reg_metrics(y_test, dt_pred)
             mixed_metrics = calc_reg_metrics(y_test, mixed_pred)
             
             metrics_df = pd.DataFrame({
-                "모델": ["로지스틱 회귀", "LightGBM", "하이브리드모형"],
-                "MAE": [lr_metrics["MAE"], lgb_metrics["MAE"], mixed_metrics["MAE"]],
-                "RMSE": [lr_metrics["RMSE"], lgb_metrics["RMSE"], mixed_metrics["RMSE"]],
-                "R²": [lr_metrics["R²"], lgb_metrics["R²"], mixed_metrics["R²"]]
+                "모델": ["회귀 분석（선형）", "의사결정나무（회귀）", "하이브리드모형"],
+                "MAE": [reg_metrics["MAE"], dt_metrics["MAE"], mixed_metrics["MAE"]],
+                "RMSE": [reg_metrics["RMSE"], dt_metrics["RMSE"], mixed_metrics["RMSE"]],
+                "R²": [reg_metrics["R²"], dt_metrics["R²"], mixed_metrics["R²"]]
             }).round(3)
         
         # 지표 비교 표시
@@ -508,17 +518,17 @@ elif st.session_state.step == 5:
         # 시각화 비교
         col1, col2 = st.columns(2)
         
-        # logit 작업 시각화
+        # logit（분류）작업 시각화
         if st.session_state.task == "logit":
             with col1:
                 st.markdown("### ROC-AUC 곡선")
-                fpr_lr, tpr_lr, _ = roc_curve(y_test, lr_proba)
-                fpr_lgb, tpr_lgb, _ = roc_curve(y_test, lgb_proba)
+                fpr_reg, tpr_reg, _ = roc_curve(y_test, reg_proba)
+                fpr_dt, tpr_dt, _ = roc_curve(y_test, dt_proba)
                 fpr_mixed, tpr_mixed, _ = roc_curve(y_test, mixed_proba)
                 
                 fig_auc = go.Figure()
-                fig_auc.add_trace(go.Scatter(x=fpr_lr, y=tpr_lr, name=f"로지스틱 회귀 (AUC={lr_metrics['AUC']:.3f})"))
-                fig_auc.add_trace(go.Scatter(x=fpr_lgb, y=tpr_lgb, name=f"LightGBM (AUC={lgb_metrics['AUC']:.3f})"))
+                fig_auc.add_trace(go.Scatter(x=fpr_reg, y=tpr_reg, name=f"회귀 분석 (AUC={reg_metrics['AUC']:.3f})"))
+                fig_auc.add_trace(go.Scatter(x=fpr_dt, y=tpr_dt, name=f"의사결정나무 (AUC={dt_metrics['AUC']:.3f})"))
                 fig_auc.add_trace(go.Scatter(x=fpr_mixed, y=tpr_mixed, name=f"하이브리드모형 (AUC={mixed_metrics['AUC']:.3f})", line_dash="dash", line_width=3))
                 fig_auc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], name="랜덤 추측", line_color="gray", line_dash="dot"))
                 st.plotly_chart(fig_auc, use_container_width=True)
@@ -530,7 +540,7 @@ elif st.session_state.step == 5:
                 fig_cm = px.imshow(cm_df, text_auto=True, color_continuous_scale="Blues")
                 st.plotly_chart(fig_cm, use_container_width=True)
         
-        # 의사결정나무 작업 시각화
+        # 의사결정나무（회귀）작업 시각화
         else:
             with col1:
                 st.markdown("### 예측값 vs 실제값（하이브리드모형）")
@@ -545,12 +555,12 @@ elif st.session_state.step == 5:
                 fig_res.add_trace(go.Scatter(x=[mixed_pred.min(), mixed_pred.max()], y=[0, 0], line_color="red", name="잔차=0 라인"))
                 st.plotly_chart(fig_res, use_container_width=True)
         
-        # 모델 해석（특징 중요도）
+        # 모델 해석（특징 중요도：의사결정나무 기반）
         st.divider()
         st.markdown("### 모델 해석：핵심 특징 중요도")
         feature_importance = pd.DataFrame({
             "특징명": st.session_state.preprocess["feature_cols"],
-            "중요도": lgb_model.feature_importances_
+            "중요도": dt_model.feature_importances_  # 의사결정나무의 특징 중요도
         }).sort_values("중요도", ascending=False).head(10)
         
         fig_importance = px.bar(feature_importance, x="중요도", y="특징명", orientation="h", color="중요도", color_continuous_scale="viridis")
