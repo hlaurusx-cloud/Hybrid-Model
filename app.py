@@ -29,11 +29,11 @@ st.set_page_config(
 if "step" not in st.session_state:
     st.session_state.step = 0  # 0:초기화면 1:데이터업로드 2:데이터전처리 3:모델학습 4:예측 5:평가
 if "data" not in st.session_state:
-    st.session_state.data = {"accept": None, "genied": None, "merged": None}
+    st.session_state.data = {"merged": None}  # 단일 파일만 저장
 if "preprocess" not in st.session_state:
     st.session_state.preprocess = {"imputer": None, "scaler": None, "encoders": None, "feature_cols": None, "target_col": None}
 if "models" not in st.session_state:
-    # 模型替换：regression（회귀분석）、decision_tree（의사결정나무）
+    # 模型：regression（회귀분석）、decision_tree（의사결정나무）
     st.session_state.models = {"regression": None, "decision_tree": None, "mixed_weights": {"regression": 0.3, "decision_tree": 0.7}}
 if "task" not in st.session_state:
     st.session_state.task = "logit"  # 기본값 logit（분류），의사결정나무（회귀）로 전환 가능
@@ -69,7 +69,7 @@ if st.session_state.step >= 3:  # 모델 학습 후 가중치 조정 가능
 # 3. 메인 페이지：단계별 내용 표시
 # ----------------------
 st.title("📊 하이브리드모형 동적 배포 프레임워크")
-st.markdown("**accept/genied 원본 데이터 업로드 후，전처리→학습→예측 전과정을 한 번에 완성**")
+st.markdown("**단일 원본 데이터 파일 업로드 후，전처리→학습→예측 전과정을 한 번에 완성**")
 st.markdown("### 🧩 핵심 모델：회귀 분석（Regression）+ 의사결정나무（Decision Tree）")
 st.divider()
 
@@ -81,8 +81,8 @@ if st.session_state.step == 0:
     st.markdown("""
     본 프레임워크는 **데이터 수령 후 직접 업로드하여 사용**할 수 있으며，사전 전처리나 모델 학습이 필요 없습니다. 핵심 흐름은 다음과 같습니다：
     
-    1. **데이터 업로드**：accept와 genied 두 개의 원본 파일（CSV/Parquet/Excel）을 업로드
-    2. **데이터 전처리**：데이터 병합、결측값 채우기、범주형 특징 인코딩
+    1. **데이터 업로드**：단일 원본 파일（CSV/Parquet/Excel）을 업로드
+    2. **데이터 전처리**：결측값 채우기、범주형 특징 인코딩
     3. **모델 학습**：「회귀 분석+의사결정나무」하이브리드모형 학습
     4. **모델 예측**：단일 데이터 입력 또는 일괄 업로드 예측을 지원
     5. **성능 평가**：하이브리드모형과 단일 모형의 성능을 비교
@@ -95,83 +95,62 @@ if st.session_state.step == 0:
     """)
 
 # ----------------------
-# 단계 1：데이터 업로드（핵심：두 개의 원본 파일 동적导入）
+# 단계 1：데이터 업로드（단일 파일만 업로드）
 # ----------------------
 elif st.session_state.step == 1:
-    st.subheader("📤 데이터 업로드（accept + genied）")
+    st.subheader("📤 데이터 업로드（단일 파일）")
     st.markdown("지원 형식：CSV、Parquet、Excel（.xlsx/.xls）")
+    st.markdown("⚠️  파일에 타겟 열（예측할 변수）과 특징 열（예측에 사용할 변수）이 모두 포함되어야 합니다")
     
-    col1, col2 = st.columns(2)
+    # 단일 파일 업로드 컴포넌트
+    uploaded_file = st.file_uploader("데이터 파일 선택", type=["csv", "parquet", "xlsx", "xls"], key="single_file")
     
-    # accept 파일 업로드
-    with col1:
-        st.markdown("### accept 데이터셋")
-        accept_file = st.file_uploader("accept 파일 선택", type=["csv", "parquet", "xlsx", "xls"], key="accept")
-        if accept_file is not None:
+    if uploaded_file is not None:
+        try:
             # 다양한 형식 파일 읽기
-            if accept_file.name.endswith(".csv"):
-                df_accept = pd.read_csv(accept_file)
-            elif accept_file.name.endswith(".parquet"):
-                df_accept = pd.read_parquet(accept_file)
-            elif accept_file.name.endswith((".xlsx", ".xls")):
-                df_accept = pd.read_excel(accept_file)
-            st.session_state.data["accept"] = df_accept
-            st.metric("데이터 양", f"{len(df_accept):,} 행 × {len(df_accept.columns)} 열")
-            st.dataframe(df_accept.head(3), use_container_width=True)
-    
-    # genied 파일 업로드
-    with col2:
-        st.markdown("### genied 데이터셋")
-        genied_file = st.file_uploader("genied 파일 선택", type=["csv", "parquet", "xlsx", "xls"], key="genied")
-        if genied_file is not None:
-            if genied_file.name.endswith(".csv"):
-                df_genied = pd.read_csv(genied_file)
-            elif genied_file.name.endswith(".parquet"):
-                df_genied = pd.read_parquet(genied_file)
-            elif genied_file.name.endswith((".xlsx", ".xls")):
-                df_genied = pd.read_excel(genied_file)
-            st.session_state.data["genied"] = df_genied
-            st.metric("데이터 양", f"{len(df_genied):,} 행 × {len(df_genied.columns)} 열")
-            st.dataframe(df_genied.head(3), use_container_width=True)
-    
-    # 데이터 병합（사용자가 연관 키 지정 필요）
-    st.divider()
-    if st.session_state.data["accept"] is not None and st.session_state.data["genied"] is not None:
-        st.markdown("### 데이터 병합 설정")
-        # 공통 열 자동识别하여 연관 키 후보로 제시
-        common_cols = list(set(st.session_state.data["accept"].columns) & set(st.session_state.data["genied"].columns))
-        if common_cols:
-            join_key = st.selectbox("연관 키 선택（두 데이터셋을 병합하기 위해）", options=common_cols, index=0)
-        else:
-            join_key = st.text_input("공통 열이 없습니다，연관 키를 입력하세요（두 파일에 모두 존재해야 함）")
+            if uploaded_file.name.endswith(".csv"):
+                df_merged = pd.read_csv(uploaded_file)
+            elif uploaded_file.name.endswith(".parquet"):
+                df_merged = pd.read_parquet(uploaded_file)
+            elif uploaded_file.name.endswith((".xlsx", ".xls")):
+                df_merged = pd.read_excel(uploaded_file)
+            else:
+                st.error("지원하지 않는 파일 형식입니다！CSV/Parquet/Excel 파일을 업로드하세요")
+                st.stop()
+            
+            # 데이터 저장
+            st.session_state.data["merged"] = df_merged
+            
+            # 데이터 정보 표시
+            st.success(f"데이터 업로드 성공！")
+            st.metric("데이터 양", f"{len(df_merged):,} 행 × {len(df_merged.columns)} 열")
+            st.markdown("### 데이터 미리보기")
+            st.dataframe(df_merged.head(5), use_container_width=True)
+            
+            # 데이터 기본 정보 추가 표시
+            st.markdown("### 데이터 기본 정보")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.write("**열 이름**")
+                st.write(", ".join(df_merged.columns.tolist()[:10]) + ("..." if len(df_merged.columns) > 10 else ""))
+            with col2:
+                st.write("**결측값 총 개수**")
+                st.write(f"{df_merged.isnull().sum().sum()} 개")
+            with col3:
+                st.write("**데이터 유형**")
+                st.write(df_merged.dtypes.value_counts().to_string())
         
-        join_type = st.selectbox("병합 방식", options=["내부 조인（공통 데이터만 유지）", "왼쪽 조인（accept 모든 데이터 유지）"], index=0)
-        join_type_map = {"내부 조인（공통 데이터만 유지）": "inner", "왼쪽 조인（accept 모든 데이터 유지）": "left"}
-        
-        if st.button("데이터 병합 시작"):
-            try:
-                df_merged = pd.merge(
-                    st.session_state.data["accept"],
-                    st.session_state.data["genied"],
-                    on=join_key,
-                    how=join_type_map[join_type]
-                )
-                st.session_state.data["merged"] = df_merged
-                st.success(f"데이터 병합 성공！병합 후 데이터：{len(df_merged):,} 행 × {len(df_merged.columns)} 열")
-                st.dataframe(df_merged.head(3), use_container_width=True)
-            except Exception as e:
-                st.error(f"병합 실패：{str(e)}")
-    else:
-        st.warning("두 개의 데이터셋을 모두 업로드한 후 병합하세요")
+        except Exception as e:
+            st.error(f"데이터 읽기 실패：{str(e)}")
 
 # ----------------------
-# 단계 2：데이터 전처리（데이터에 동적으로适配，사전 설정 불필요）
+# 단계 2：데이터 전처리（단일 파일에 맞춰逻辑 수정）
 # ----------------------
 elif st.session_state.step == 2:
     st.subheader("🧹 데이터 전처리")
     
     if st.session_state.data["merged"] is None:
-        st.warning("먼저「데이터 업로드」단계를 완료하고 데이터를 병합하세요")
+        st.warning("먼저「데이터 업로드」단계를 완료하세요")
     else:
         df_merged = st.session_state.data["merged"]
         
@@ -423,28 +402,34 @@ elif st.session_state.step == 4:
                 st.metric("업로드 데이터 양", f"{len(batch_df):,} 행")
                 st.dataframe(batch_df.head(3), use_container_width=True)
                 
-                if st.button("일괄 예측 시작"):
-                    with st.spinner("예측 중..."):
-                        pred, proba = predict(batch_df)
-                        batch_df["하이브리드모형 예측 결과"] = pred
-                        if proba is not None:
-                            batch_df["양성 확률"] = proba.round(3)
-                        
-                        st.divider()
-                        st.markdown("### 일괄 예측 결과")
-                        st.dataframe(
-                            batch_df[["하이브리드모형 예측 결과"] + (["양성 확률"] if proba is not None else []) + feature_cols[:3]],
-                            use_container_width=True
-                        )
-                        
-                        # 결과 다운로드
-                        csv = batch_df.to_csv(index=False, encoding="utf-8-sig")
-                        st.download_button(
-                            label="예측 결과 다운로드",
-                            data=csv,
-                            file_name="하이브리드모형_일괄예측결과.csv",
-                            mime="text/csv"
-                        )
+                # 특징 열 일치 확인
+                required_features = st.session_state.preprocess["feature_cols"]
+                missing_features = [col for col in required_features if col not in batch_df.columns]
+                if missing_features:
+                    st.warning(f"업로드된 파일에 필요한 특징 열이 없습니다：{', '.join(missing_features)}")
+                else:
+                    if st.button("일괄 예측 시작"):
+                        with st.spinner("예측 중..."):
+                            pred, proba = predict(batch_df)
+                            batch_df["하이브리드모형 예측 결과"] = pred
+                            if proba is not None:
+                                batch_df["양성 확률"] = proba.round(3)
+                            
+                            st.divider()
+                            st.markdown("### 일괄 예측 결과")
+                            st.dataframe(
+                                batch_df[["하이브리드모형 예측 결과"] + (["양성 확률"] if proba is not None else []) + feature_cols[:3]],
+                                use_container_width=True
+                            )
+                            
+                            # 결과 다운로드
+                            csv = batch_df.to_csv(index=False, encoding="utf-8-sig")
+                            st.download_button(
+                                label="예측 결과 다운로드",
+                                data=csv,
+                                file_name="하이브리드모형_일괄예측결과.csv",
+                                mime="text/csv"
+                            )
 
 # ----------------------
 # 단계 5：성능 평가（하이브리드모형 vs 단일 모형）
