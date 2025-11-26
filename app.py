@@ -349,47 +349,50 @@ elif st.session_state.step == 2:
                     st.info("👈 먼저 [전처리 실행] 버튼을 눌러주세요.")
                     
 # ==============================================================================
-#  단계 3：모델 학습 (3개 모델 동시 학습 및 비교 준비)
+#  단계 3：모델 학습 (3개 모델 독립 분석 및 결과 확인)
 # ==============================================================================
 elif st.session_state.step == 3:
-    st.subheader("🚀 모델 학습 (비교 분석)")
+    st.subheader("🚀 모델 학습 및 독립 분석")
     
     if "X_processed" not in st.session_state.data:
         st.warning("⚠️ 먼저 [데이터 전처리] 단계를 완료하세요.")
     else:
-        st.info("💡 **Logic(선형/로지스틱)**, **Tree(의사결정나무)**, 그리고 **Hybrid(하이브리드)** 모델을 모두 학습하여 성능을 비교합니다.")
+        st.info("💡 **Logic(선형/로지스틱)**, **Tree(의사결정나무)**, **Hybrid(하이브리드)** 세 가지 관점에서 데이터를 각각 분석합니다.")
 
+        # -------------------------------------------------------------
+        # 1. 설정 영역
+        # -------------------------------------------------------------
         col1, col2 = st.columns(2)
         
-        # 1. 분석 유형 선택
         with col1:
             st.markdown("#### 1️⃣ 분석 유형 선택")
             task_option = st.radio(
                 "타겟(Y) 특성:",
-                ["분류 (Classification)", "회귀 (Regression)"],
+                ["분류 (Classification) - 예: 0/1, 합격/불합격", 
+                 "회귀 (Regression) - 예: 가격, 점수 예측"],
                 horizontal=True
             )
-            # task 설정
             st.session_state.task = "logit" if "분류" in task_option else "tree"
 
-        # 2. 하이브리드 가중치 설정 (비교를 위해 정의 필요)
         with col2:
-            st.markdown("#### 2️⃣ 하이브리드 가중치 설정")
-            st.caption("비교 대상인 '하이브리드 모델'을 만들 때 사용할 가중치를 설정합니다.")
+            st.markdown("#### 2️⃣ Hybrid 모델 정의")
+            st.caption("독립된 두 모델(Logic/Tree)을 어떤 비율로 참조하여 'Hybrid' 결과를 만들지 설정합니다.")
             reg_weight = st.slider(
-                "Logic 모델 반영 비율 (나머지는 Tree)", 
-                min_value=0.0, max_value=1.0, value=0.5, step=0.1
+                "Logic 모델 반영 가중치", 
+                0.0, 1.0, 0.5, 0.1
             )
-            st.write(f"⚖️ Hybrid 구성: **Logic {reg_weight*100:.0f}% + Tree {(1-reg_weight)*100:.0f}%**")
+            st.write(f"👉 Hybrid 구성: Logic {reg_weight*100:.0f}% + Tree {(1-reg_weight)*100:.0f}%")
 
         st.divider()
 
-        # 3. 학습 실행
-        st.markdown("#### 3️⃣ 전체 모델 학습 실행")
-        test_size = st.slider("테스트 데이터 비율 (Test Size)", 0.1, 0.4, 0.2)
+        # -------------------------------------------------------------
+        # 2. 학습 실행
+        # -------------------------------------------------------------
+        st.markdown("#### 3️⃣ 분석 시작")
+        test_size = st.slider("테스트 데이터 비율 (검증용)", 0.1, 0.4, 0.2)
         
-        if st.button("🏁 3개 모델 동시 학습 시작", type="primary"):
-            with st.spinner("Logic, Tree, Hybrid 모델을 모두 학습 중입니다..."):
+        if st.button("🏁 3개 모델 학습 및 분석 실행", type="primary"):
+            with st.spinner("세 가지 모델이 데이터를 분석 중입니다..."):
                 try:
                     X = st.session_state.data["X_processed"]
                     y = st.session_state.data["y_processed"]
@@ -408,28 +411,77 @@ elif st.session_state.step == 3:
                         reg_model = LinearRegression()
                         dt_model = DecisionTreeRegressor(max_depth=5, random_state=42)
                     
-                    # [핵심] 두 모델 모두 학습 (선택이 아니라 필수)
+                    # [핵심] 각각 학습 수행
                     reg_model.fit(X_train, y_train)
                     dt_model.fit(X_train, y_train)
                     
-                    # 모델 저장
+                    # 모델 전역 저장
                     st.session_state.models["regression"] = reg_model
                     st.session_state.models["decision_tree"] = dt_model
-                    
-                    # 하이브리드 계산을 위한 가중치 저장
                     st.session_state.models["mixed_weights"] = {
                         "regression": reg_weight,
                         "decision_tree": 1.0 - reg_weight
                     }
-                    
-                    # 테스트 데이터 저장
                     st.session_state.data.update({"X_test": X_test, "y_test": y_test})
+
+                    # ---------------------------------------------------------
+                    # [추가된 기능] 학습 데이터에 대한 3개 모델 분석 결과 즉시 출력
+                    # ---------------------------------------------------------
+                    st.success("✅ 학습 완료! 각 모델이 데이터를 어떻게 분석했는지 확인하세요.")
+                    st.divider()
+                    st.markdown("### 📊 학습 데이터(Training Data) 분석 리포트")
                     
-                    st.success("✅ 모든 모델 학습 완료! 다음 [성능 평가] 단계에서 비교 결과를 확인하세요.")
+                    # 학습 데이터에 대한 예측 및 점수 계산
+                    if st.session_state.task == "logit":
+                        # 분류 (Classification) - 정확도(Accuracy) 기준
+                        p_train_reg = reg_model.predict_proba(X_train)[:, 1]
+                        p_train_dt = dt_model.predict_proba(X_train)[:, 1]
+                        p_train_hybrid = (p_train_reg * reg_weight) + (p_train_dt * (1 - reg_weight))
+                        
+                        pred_train_reg = reg_model.predict(X_train)
+                        pred_train_dt = dt_model.predict(X_train)
+                        pred_train_hybrid = (p_train_hybrid >= 0.5).astype(int)
+                        
+                        s1 = accuracy_score(y_train, pred_train_reg)
+                        s2 = accuracy_score(y_train, pred_train_dt)
+                        s3 = accuracy_score(y_train, pred_train_hybrid)
+                        metric_name = "정확도(Accuracy)"
+                        
+                    else:
+                        # 회귀 (Regression) - R2 Score 기준
+                        pred_train_reg = reg_model.predict(X_train)
+                        pred_train_dt = dt_model.predict(X_train)
+                        pred_train_hybrid = (pred_train_reg * reg_weight) + (pred_train_dt * (1 - reg_weight))
+                        
+                        s1 = r2_score(y_train, pred_train_reg)
+                        s2 = r2_score(y_train, pred_train_dt)
+                        s3 = r2_score(y_train, pred_train_hybrid)
+                        metric_name = "설명력(R² Score)"
+
+                    # 결과 카드 출력
+                    m_col1, m_col2, m_col3 = st.columns(3)
+                    
+                    with m_col1:
+                        st.info("📈 Logic 분석 결과")
+                        st.metric(label=metric_name, value=f"{s1:.4f}")
+                        st.caption("선형적 관계를 중점적으로 분석함")
+                        
+                    with m_col2:
+                        st.success("🌲 Tree 분석 결과")
+                        st.metric(label=metric_name, value=f"{s2:.4f}")
+                        st.caption("규칙 및 비선형 패턴을 분석함")
+                        
+                    with m_col3:
+                        st.warning("⚖️ Hybrid 분석 결과")
+                        st.metric(label=metric_name, value=f"{s3:.4f}")
+                        st.caption(f"Logic {reg_weight*100:.0f}% + Tree {(1-reg_weight)*100:.0f}% 비율로 종합")
+
+                    st.markdown("---")
+                    st.write("👉 **다음 [성능 평가] 단계로 이동하여 테스트 데이터(Test Data)에 대한 검증 결과를 확인하세요.**")
                     
                 except Exception as e:
-                    st.error(f"학습 중 오류 발생: {e}")
-
+                    st.error(f"학습 및 분석 중 오류 발생: {e}")
+                    
 # ==============================================================================
 #  단계 4：성능 평가 (3개 모델 비교 표 및 차트 출력)
 # ==============================================================================
