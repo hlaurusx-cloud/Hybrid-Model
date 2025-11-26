@@ -511,203 +511,68 @@ elif st.session_state.step == 3:
                 except Exception as e:
                     st.error(f"학습 중 오류 발생: {e}")
 
-# ----------------------
-#  단계 4：모델 예측 (기존 단계 5에서 이동)
-# ----------------------
+# ==============================================================================
+#  단계 4：성능 평가 (기존 단계 5 -> 4로 이동)
+# ==============================================================================
 elif st.session_state.step == 4:
-    st.subheader("🎯 모델 예측")
-    
-    if st.session_state.models["regression"] is None:
-        st.warning("먼저「모델 학습」단계를 완료하세요")
-    else:
-        def predict_pipeline(input_df):
-            # 1. 전처리 적용
-            preprocess = st.session_state.preprocess
-            X = input_df.copy()
-            
-            num_cols = X.select_dtypes(include=["int64", "float64"]).columns
-            cat_cols = X.select_dtypes(include=["object", "category"]).columns
-            
-            #  수치형 변환
-            if preprocess["imputer"]:
-                X[num_cols] = preprocess["imputer"].transform(X[num_cols])
-                X[num_cols] = preprocess["scaler"].transform(X[num_cols])
-            
-            #  범주형 변환
-            for col in cat_cols:
-                X[col] = X[col].fillna("알 수 없음").astype(str)
-                encoder = preprocess["encoders"].get(col)
-                if encoder:
-                    if isinstance(encoder, LabelEncoder):
-                        #  미지의 값 처리
-                        known_classes = set(encoder.classes_)
-                        X[col] = X[col].apply(lambda x: x if x in known_classes else "알 수 없음")
-                        #  "알 수 없음"이 클래스에 없으면 추가 (임시 처리)
-                        if "알 수 없음" not in known_classes:
-                             #  LabelEncoder는 동적 추가가 어려우므로 0으로 대체하거나 예외처리 필요
-                             #  여기서는 편의상 가장 빈도 높은 값으로 대체 가정 또는 0
-                             pass 
-                        #  transform 시 에러 방지를 위해 try-except 권장
-                        try:
-                            X[col] = encoder.transform(X[col])
-                        except:
-                            X[col] = 0
-                    else:
-                        #  OneHotEncoder
-                        ohe, ohe_cols = encoder
-                        ohe_result = ohe.transform(X[[col]])
-                        X = pd.concat([X.drop(col, axis=1), pd.DataFrame(ohe_result, columns=ohe_cols)], axis=1)
-            
-            #  컬럼 순서 맞추기
-            missing_cols = set(preprocess["feature_cols"]) - set(X.columns)
-            for c in missing_cols:
-                X[c] = 0
-            X = X[preprocess["feature_cols"]]
-            
-            # 2. 예측
-            reg_model = st.session_state.models["regression"]
-            dt_model = st.session_state.models["decision_tree"]
-            weights = st.session_state.models["mixed_weights"]
-            
-            if st.session_state.task == "logit":
-                reg_p = reg_model.predict_proba(X)[:, 1]
-                dt_p = dt_model.predict_proba(X)[:, 1]
-                mixed_p = weights["regression"] * reg_p + weights["decision_tree"] * dt_p
-                pred = (mixed_p >= 0.5).astype(int)
-                return pred, mixed_p
-            else:
-                reg_p = reg_model.predict(X)
-                dt_p = dt_model.predict(X)
-                mixed_p = weights["regression"] * reg_p + weights["decision_tree"] * dt_p
-                return mixed_p, None
-
-        mode = st.radio("예측 방식", ["단일 데이터 입력", "일괄 업로드 (CSV)"])
-        
-        if mode == "단일 데이터 입력":
-            st.markdown("#### 데이터 입력")
-            feature_cols = st.session_state.preprocess["feature_cols"]
-            #  원본 데이터프레임 구조 참조 (인코딩 전)
-            original_features = [c for c in st.session_state.data["merged"].columns 
-                               if c not in [st.session_state.preprocess["target_col"]]]
-            
-            input_data = {}
-            with st.form("pred_form"):
-                cols = st.columns(3)
-                for i, col in enumerate(original_features[:9]): #  최대 9개만 표시
-                    with cols[i % 3]:
-                        #  원본 데이터 타입 확인
-                        col_type = st.session_state.data["merged"][col].dtype
-                        if pd.api.types.is_numeric_dtype(col_type):
-                            input_data[col] = st.number_input(col, value=0.0)
-                        else:
-                            opts = st.session_state.data["merged"][col].dropna().unique()
-                            input_data[col] = st.selectbox(col, options=opts)
-                submit = st.form_submit_button("예측하기")
-            
-            if submit:
-                input_df = pd.DataFrame([input_data])
-                pred, proba = predict_pipeline(input_df)
-                st.divider()
-                if st.session_state.task == "logit":
-                    st.metric("예측 결과", "양성(Positive)" if pred[0]==1 else "음성(Negative)")
-                    st.metric("확률", f"{proba[0]:.2%}")
-                else:
-                    st.metric("예측 값", f"{pred[0]:.4f}")
-                    
-        else:
-            up_file = st.file_uploader("CSV 업로드", type=["csv"])
-            if up_file:
-                batch_df = pd.read_csv(up_file)
-                if st.button("일괄 예측 시작"):
-                    pred, proba = predict_pipeline(batch_df)
-                    batch_df["Predicted"] = pred
-                    if proba is not None:
-                        batch_df["Probability"] = proba
-                    st.dataframe(batch_df.head())
-                    st.download_button("결과 다운로드", batch_df.to_csv().encode('utf-8'), "prediction.csv")
-
-# ----------------------
-#  단계 5：성능 평가 (기존 단계 6에서 이동)
-# ----------------------
-elif st.session_state.step == 5:
     st.subheader("📈 모델 성능 평가")
     
     if st.session_state.models["regression"] is None:
-        st.warning("먼저「모델 학습」단계를 완료하세요")
+        st.warning("⚠️ 먼저 [모델 학습] 단계를 완료하세요")
     else:
         X_test = st.session_state.data["X_test"]
         y_test = st.session_state.data["y_test"]
+        w = st.session_state.models["mixed_weights"]
         
-        reg_model = st.session_state.models["regression"]
-        dt_model = st.session_state.models["decision_tree"]
-        weights = st.session_state.models["mixed_weights"]
+        reg = st.session_state.models["regression"]
+        dt = st.session_state.models["decision_tree"]
         
+        # 모델 정보 표시
+        st.info(f"ℹ️ 평가 모델 구성 - Logic: {w['regression']*100:.0f}% / Tree: {w['decision_tree']*100:.0f}%")
+
         if st.session_state.task == "logit":
-            #  확률 계산
-            reg_p = reg_model.predict_proba(X_test)[:, 1]
-            dt_p = dt_model.predict_proba(X_test)[:, 1]
-            mixed_p = weights["regression"] * reg_p + weights["decision_tree"] * dt_p
+            p_reg = reg.predict_proba(X_test)[:, 1]
+            p_dt = dt.predict_proba(X_test)[:, 1]
+            p_mix = (p_reg * w["regression"]) + (p_dt * w["decision_tree"])
+            pred_mix = (p_mix >= 0.5).astype(int)
             
-            #  예측값
-            reg_pred = reg_model.predict(X_test)
-            dt_pred = dt_model.predict(X_test)
-            mixed_pred = (mixed_p >= 0.5).astype(int)
+            acc = accuracy_score(y_test, pred_mix)
+            try: roc_auc = auc(*roc_curve(y_test, p_mix)[:2])
+            except: roc_auc = 0.0
             
-            #  평가 함수
-            def get_metrics(y, pred, proba):
-                return {
-                    "ACC": accuracy_score(y, pred),
-                    "AUC": auc(*roc_curve(y, proba)[:2])
-                }
+            col1, col2 = st.columns(2)
+            col1.metric("정확도 (Accuracy)", f"{acc:.2%}")
+            col2.metric("AUC Score", f"{roc_auc:.3f}")
             
-            m1 = get_metrics(y_test, reg_pred, reg_p)
-            m2 = get_metrics(y_test, dt_pred, dt_p)
-            m3 = get_metrics(y_test, mixed_pred, mixed_p)
-            
-            metrics = pd.DataFrame([m1, m2, m3], index=["회귀분석", "의사결정나무", "하이브리드"])
-            st.table(metrics)
-            
-            #  ROC 곡선
-            fpr, tpr, _ = roc_curve(y_test, mixed_p)
-            fig = px.area(x=fpr, y=tpr, title=f"ROC Curve (Hybrid AUC={m3['AUC']:.3f})", 
-                        labels=dict(x="False Positive Rate", y="True Positive Rate"))
+            fpr, tpr, _ = roc_curve(y_test, p_mix)
+            fig = px.area(x=fpr, y=tpr, title="ROC Curve", labels=dict(x="FPR", y="TPR"))
             fig.add_shape(type='line', line=dict(dash='dash'), x0=0, x1=1, y0=0, y1=1)
             st.plotly_chart(fig, width='stretch')
             
         else:
-            #  회귀 평가
-            reg_pred = reg_model.predict(X_test)
-            dt_pred = dt_model.predict(X_test)
-            mixed_pred = weights["regression"] * reg_pred + weights["decision_tree"] * dt_pred
+            p_reg = reg.predict(X_test)
+            p_dt = dt.predict(X_test)
+            p_mix = (p_reg * w["regression"]) + (p_dt * w["decision_tree"])
             
-            def get_reg_metrics(y, pred):
-                return {
-                    "MAE": mean_absolute_error(y, pred),
-                    "RMSE": np.sqrt(mean_squared_error(y, pred)),
-                    "R2": r2_score(y, pred)
-                }
+            mae = mean_absolute_error(y_test, p_mix)
+            r2 = r2_score(y_test, p_mix)
             
-            m1 = get_reg_metrics(y_test, reg_pred)
-            m2 = get_reg_metrics(y_test, dt_pred)
-            m3 = get_reg_metrics(y_test, mixed_pred)
+            col1, col2 = st.columns(2)
+            col1.metric("MAE (평균오차)", f"{mae:.4f}")
+            col2.metric("R² (설명력)", f"{r2:.4f}")
             
-            metrics = pd.DataFrame([m1, m2, m3], index=["선형회귀", "의사결정나무", "하이브리드"])
-            st.table(metrics)
-            
-            #  예측 vs 실제
-            fig = px.scatter(x=y_test, y=mixed_pred, title="실제값 vs 예측값 (Hybrid)", 
-                           labels={"x": "실제값", "y": "예측값"})
-            fig.add_shape(type='line', line=dict(dash='dash', color='red'), 
-                        x0=y_test.min(), x1=y_test.max(), y0=y_test.min(), y1=y_test.max())
+            fig = px.scatter(x=y_test, y=p_mix, title="Actual vs Predicted")
+            fig.add_shape(type='line', line=dict(dash='dash', color='red'), x0=y_test.min(), x1=y_test.max(), y0=y_test.min(), y1=y_test.max())
             st.plotly_chart(fig, width='stretch')
-            
-        #  중요도 (Tree 기준)
-        if hasattr(dt_model, "feature_importances_"):
-            st.markdown("### 🌳 변수 중요도 (의사결정나무 기준)")
+        
+        # 변수 중요도 (Tree 기준)
+        if hasattr(dt, "feature_importances_"):
+            st.divider()
+            st.markdown("### 🌳 변수 중요도 (Decision Tree 기준)")
             imp_df = pd.DataFrame({
                 "Feature": st.session_state.preprocess["feature_cols"],
-                "Importance": dt_model.feature_importances_
+                "Importance": dt.feature_importances_
             }).sort_values("Importance", ascending=False).head(10)
             
-            fig_imp = px.bar(imp_df, x="Importance", y="Feature", orientation='h', title="Top 10 Feature Importance")
+            fig_imp = px.bar(imp_df, x="Importance", y="Feature", orientation='h', title="Top 10 Important Features")
             st.plotly_chart(fig_imp, width='stretch')
