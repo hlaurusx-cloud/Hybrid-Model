@@ -373,7 +373,7 @@ elif st.session_state.step == 2:
                     st.info("👈 위 버튼을 눌러 전처리를 시작하세요.")
 
 # ==============================================================================
-#  단계 3：모델 학습 (데이터 분할을 모델 설정 섹션의 최상단에 통합)
+#  단계 3：모델 학습 (모델 설정 아래에 데이터 분할 배치)
 # ==============================================================================
 elif st.session_state.step == 3:
     st.subheader("🚀 모델 학습 설정")
@@ -396,43 +396,71 @@ elif st.session_state.step == 3:
         st.divider()
 
         # -------------------------------------------------------------
-        # 2. 모델 설정 및 데이터 분할 (통합됨)
+        # 2. 모델 설정 및 데이터 분할
         # -------------------------------------------------------------
-        st.markdown("### 2️⃣ 모델 설정 및 데이터 분할")
+        st.markdown("### 2️⃣ 모델 상세 설정 및 데이터 분할")
         
-        # [A] 데이터 분할 설정 (3개 모델 공통 적용 - 가장 먼저 설정)
-        st.markdown("#### ⚙️ 데이터 분할 (3개 모델 공통)")
-        test_size = st.slider(
-            "테스트 데이터 비율 (검증용)", 
-            0.1, 0.4, 0.2, 
-            help="전체 데이터 중 학습에 사용하지 않고 검증용으로 남겨둘 데이터의 비율입니다. 3개 모델 모두 동일하게 적용됩니다."
-        )
-        
-        st.markdown("---")
-
-        # [B] 모델별 상세 설정 (Logic / Tree / Hybrid)
-        st.markdown("#### 🛠️ 모델별 상세 설정")
+        # [A] 모델별 파라미터 (3단 컬럼) - 먼저 배치
+        st.markdown("#### 🛠️ 모델별 파라미터")
         col1, col2, col3 = st.columns(3)
         
         # [Logic 모델]
         with col1:
             st.markdown("##### 🔹 Logic 모델")
             st.caption("선형/로지스틱 회귀")
-            st.info("🔧 **설정**: Standard (기본)")
+            # 불필요한 설정 텍스트 제거
 
         # [Tree 모델]
         with col2:
             st.markdown("##### 🌳 Tree 모델")
             st.caption("의사결정나무")
             tree_depth = st.slider("최대 깊이 (Max Depth)", 1, 20, 5, key="tree_depth")
-            st.caption(f"깊이 제한: {tree_depth}")
 
         # [Hybrid 모델]
         with col3:
             st.markdown("##### ⚖️ Hybrid 모델")
             st.caption("Logic + Tree 결합")
             reg_weight = st.slider("Logic 가중치", 0.0, 1.0, 0.5, 0.1, key="reg_weight")
-            st.caption(f"비율: Logic {int(reg_weight*100)}% : Tree {int((1-reg_weight)*100)}%")
+            st.caption(f"Logic {int(reg_weight*100)}% + Tree {int((1-reg_weight)*100)}%")
+
+        st.markdown("---")
+
+        # [B] 데이터 분할 설정 (모델 설정 아래에 배치)
+        st.markdown("#### ⚙️ 데이터 분할 (Train / Test Split)")
+        
+        test_size = st.slider(
+            "검증(Test) 데이터 비율 설정", 
+            0.1, 0.4, 0.2, 
+            key="common_test_size",
+            help="전체 데이터 중 학습에 사용하지 않고 성능 검증용으로 남겨둘 데이터의 비율입니다."
+        )
+
+        # [C] 데이터 파티셔닝 시각화 (직관적 확인용)
+        if "X_processed" in st.session_state.data:
+            total_count = len(st.session_state.data["X_processed"])
+            test_count = int(total_count * test_size)
+            train_count = total_count - test_count
+            
+            # 파티셔닝 시각화 (Stacked Bar)
+            fig_part = go.Figure()
+            fig_part.add_trace(go.Bar(
+                y=['Data'], x=[train_count], name=f'학습용 (Train): {train_count}건', 
+                orientation='h', marker=dict(color='#2E86C1')
+            ))
+            fig_part.add_trace(go.Bar(
+                y=['Data'], x=[test_count], name=f'검증용 (Test): {test_count}건', 
+                orientation='h', marker=dict(color='#E74C3C')
+            ))
+            fig_part.update_layout(
+                barmode='stack', 
+                height=60, 
+                margin=dict(l=0, r=0, t=0, b=0),
+                xaxis=dict(showticklabels=False, showgrid=False),
+                yaxis=dict(showticklabels=False, showgrid=False),
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1)
+            )
+            st.plotly_chart(fig_part, use_container_width=True)
 
         st.divider()
 
