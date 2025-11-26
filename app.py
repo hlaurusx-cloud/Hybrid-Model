@@ -18,7 +18,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # ----------------------
-# 1. 페이지 기본 설정 (중복 제거됨)
+# 1. 페이지 기본 설정 (단 한 번만 호출)
 # ----------------------
 st.set_page_config(
     page_title="하이브리드모형 동적 프레임워크（의사결정나무+회귀분석）",
@@ -28,7 +28,7 @@ st.set_page_config(
 
 # 전역 상태 관리
 if "step" not in st.session_state:
-    st.session_state.step = 0  # 0번이 이제 '데이터 업로드'가 됩니다.
+    st.session_state.step = 0  # 0번: 데이터 업로드
 if "data" not in st.session_state:
     st.session_state.data = {"merged": None}
 if "preprocess" not in st.session_state:
@@ -50,29 +50,43 @@ if "task" not in st.session_state:
 st.sidebar.title("📌 작업 흐름")
 st.sidebar.divider()
 
-# [수정] '초기 설정'을 제거하고 리스트를 당겼습니다.
+# 초기 설정을 제거하고 '데이터 업로드'부터 시작
 steps = ["데이터 업로드", "데이터 시각화", "데이터 전처리", "모델 학습", "모델 예측", "성능 평가"]
 for i, step_name in enumerate(steps):
     if st.sidebar.button(step_name, key=f"btn_{i}"):
         st.session_state.step = i
 
+st.sidebar.divider()
+st.sidebar.subheader("핵심 설정")
+st.session_state.task = st.sidebar.radio("작업 유형", options=["logit", "의사결정나무"], index=0)
 
+if st.session_state.step >= 3:
+    st.sidebar.subheader("하이브리드 가중치")
+    reg_weight = st.sidebar.slider(
+        "회귀 모델 가중치", 0.0, 1.0, 
+        value=st.session_state.models["mixed_weights"]["regression"], step=0.1
+    )
+    st.session_state.models["mixed_weights"]["regression"] = reg_weight
+    st.session_state.models["mixed_weights"]["decision_tree"] = 1 - reg_weight
+    st.sidebar.text(f"트리 모델 가중치: {1 - reg_weight:.1f}")
 
 # ----------------------
 # 3. 메인 페이지 로직
 # ----------------------
 st.title("📊 하이브리드모형 동적 배포 프레임워크")
 
-# [수정] Step 0: 데이터 업로드 (기존 Step 1 로직을 여기로 이동)
+# [수정] Step 0: 데이터 업로드 (기본 데이터 로드 기능 추가)
 if st.session_state.step == 0:
     st.subheader("📤 데이터 업로드")
-    tab1, tab2 = st.tabs(["📂 파일 업로드", "💾 기본 데이터"])
+    tab1, tab2 = st.tabs(["📂 파일 업로드", "💾 기본 데이터(서버 파일)"])
     
     def load_csv_safe(file_buffer):
         encodings = ['utf-8', 'cp949', 'euc-kr', 'latin1']
         for enc in encodings:
             try:
-                file_buffer.seek(0)
+                # file_buffer가 파일 객체인지 경로 문자열인지 확인
+                if hasattr(file_buffer, 'seek'):
+                    file_buffer.seek(0)
                 df = pd.read_csv(file_buffer, encoding=enc)
                 return df, enc
             except:
@@ -96,27 +110,35 @@ if st.session_state.step == 0:
             except Exception as e:
                 st.error(f"에러: {e}")
 
-  with tab2:
-        DEFAULT_FILE_PATH = "LC_clean.csv" 
-        st.info(f"💡 **기본 데이터 설명**: 대출 관련 통합 데이터 (`{DEFAULT_FILE_PATH}`)")
-        
-        if st.button("기본 데이터 불러오기", type="primary"):
-            if os.path.exists(DEFAULT_FILE_PATH):
-                # 기본 파일도 안전하게 로드 시도
-                with open(DEFAULT_FILE_PATH, 'rb') as f:
-                    df_default, enc_used = load_csv_safe(f)
+    # [수정된 부분] 서버에 있는 파일 목록을 보여주고 선택하여 로드
+    with tab2:
+        st.markdown("##### 📂 서버(현재 폴더)에 저장된 CSV 파일 목록")
+        try:
+            # 현재 디렉토리의 .csv 파일만 검색
+            current_files = [f for f in os.listdir('.') if f.endswith('.csv')]
+            
+            if len(current_files) > 0:
+                selected_file = st.selectbox("사용할 파일을 선택하세요", current_files)
                 
-                if df_default is not None:
-                    st.session_state.data["merged"] = df_default.reset_index(drop=True)
-                    st.success(f"✅ 기본 데이터 로드 성공! ({len(df_default):,} 행, 인코딩: {enc_used})")
-                    st.rerun()
-                else:
-                    st.error("❌ 기본 파일을 읽을 수 없습니다 (인코딩 오류).")
+                if st.button("이 데이터 불러오기"):
+                    df, enc = load_csv_safe(selected_file)
+                    if df is not None:
+                        st.session_state.data["merged"] = df.reset_index(drop=True)
+                        st.success(f"'{selected_file}' 로드 성공! ({len(df)}행)")
+                    else:
+                        st.error("파일을 읽는 중 오류가 발생했습니다.")
             else:
-                st.error(f"⚠️ 파일을 찾을 수 없습니다: {DEFAULT_FILE_PATH}")
+                st.warning("현재 폴더에 .csv 파일이 없습니다. 파일을 업로드했는지 확인해주세요.")
+                
+        except Exception as e:
+            st.error(f"파일 목록을 불러오는 중 오류 발생: {e}")
 
+    if st.session_state.data["merged"] is not None:
+        st.divider()
+        st.write("### 📋 데이터 미리보기")
+        st.dataframe(st.session_state.data["merged"].head())
 
-# [수정] Step 1: 시각화 (기존 Step 2)
+# Step 1: 시각화
 elif st.session_state.step == 1:
     st.subheader("📊 데이터 시각화")
     if st.session_state.data["merged"] is None:
@@ -138,7 +160,7 @@ elif st.session_state.step == 1:
             except:
                 st.error("해당 변수 조합으로 그래프를 그릴 수 없습니다.")
 
-# [수정] Step 2: 데이터 전처리 (기존 Step 3)
+# Step 2: 데이터 전처리
 elif st.session_state.step == 2:
     st.subheader("🧹 데이터 전처리")
     
@@ -166,7 +188,6 @@ elif st.session_state.step == 2:
                         X = clean_df[selected_features].copy()
                         y = clean_df[target_col].copy()
 
-                        # 사용자님 원래 코드 유지 (무한대 처리 위치 등)
                         X = X.replace([np.inf, -np.inf], np.nan)
 
                         le_target = None
@@ -219,7 +240,7 @@ elif st.session_state.step == 2:
                     except Exception as e:
                         st.error(f"오류: {e}")
 
-# [수정] Step 3: 모델 학습 (기존 Step 4)
+# Step 3: 모델 학습
 elif st.session_state.step == 3:
     st.subheader("🚀 모델 학습")
     if "X_processed" in st.session_state.data:
@@ -248,7 +269,7 @@ elif st.session_state.step == 3:
     else:
         st.warning("전처리를 먼저 진행하세요.")
 
-# [수정] Step 4: 모델 예측 (기존 Step 5)
+# Step 4: 모델 예측
 elif st.session_state.step == 4:
     st.subheader("🎯 모델 예측")
     
@@ -326,7 +347,7 @@ elif st.session_state.step == 4:
                 df_batch["Prediction"] = pred
                 st.dataframe(df_batch)
 
-# [수정] Step 5: 평가 (기존 Step 6)
+# Step 5: 평가
 elif st.session_state.step == 5:
     st.subheader("📈 성능 평가")
     if "X_test" in st.session_state.data:
