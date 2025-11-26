@@ -215,10 +215,10 @@ elif st.session_state.step == 1:
                 st.info("Y축 변수를 선택하면 그래프가 표시됩니다.")
 
 # ----------------------
-#  단계 2：데이터 전처리 (완전 수정: 타겟 결측치 제거 및 자동 인코딩)
+#  단계 2：데이터 전처리 (기존 단계 3에서 이동)
 # ----------------------
-elif st.session_state.step == 3:
-    st.subheader("🧹 데이터 전처리 & 변수 선택 (Final Fix)")
+elif st.session_state.step == 2:
+    st.subheader("🧹 데이터 전처리 & 변수 선택")
     
     if st.session_state.data["merged"] is None:
         st.warning("⚠️ 먼저 '데이터 업로드' 단계를 완료하세요.")
@@ -251,6 +251,7 @@ elif st.session_state.step == 3:
             # 설정 저장
             st.session_state.preprocess["target_col"] = target_col
             
+            # [수정된 부분] 리스트 언패킹([...])을 사용하여 탭 객체를 추출해야 합니다.
             [tab1] = st.tabs(["⚡ 전처리 실행"])
             
             with tab1:
@@ -259,7 +260,7 @@ elif st.session_state.step == 3:
                 if st.button("🚀 전처리 및 정제 시작", type="primary"):
                     with st.spinner("데이터 정제 중..."):
                         try:
-                            # [핵심 1] 타겟(Y)이 비어있는 행 제거 (이게 없으면 NaN 에러 발생)
+                            # [핵심 1] 타겟(Y)이 비어있는 행 제거
                             clean_df = df_origin.dropna(subset=[target_col]).reset_index(drop=True)
                             
                             dropped_count = len(df_origin) - len(clean_df)
@@ -270,8 +271,7 @@ elif st.session_state.step == 3:
                             X = clean_df[selected_features].copy()
                             y = clean_df[target_col].copy()
                             
-                            # [핵심 2] 타겟(Y) 데이터 인코딩 (문자일 경우 숫자로 변환)
-                            # 회귀인데 Y가 문자면 에러, 분류면 자동 인코딩
+                            # [핵심 2] 타겟(Y) 데이터 인코딩
                             le_target = None
                             if st.session_state.task == "logit" and y.dtype == 'object':
                                 le_target = LabelEncoder()
@@ -293,7 +293,6 @@ elif st.session_state.step == 3:
 
                             # 2. 수치형 처리
                             if num_cols:
-                                # DataFrame 할당 시 index=X.index 필수
                                 X_imputed = imputer.fit_transform(X[num_cols])
                                 X_scaled = scaler.fit_transform(X_imputed)
                                 X[num_cols] = pd.DataFrame(X_scaled, columns=num_cols, index=X.index)
@@ -310,20 +309,20 @@ elif st.session_state.step == 3:
                             final_features = num_cols + cat_cols
                             X = X[final_features]
                             
-                            # 新增：检查并处理 X 中的无穷值
+                            # 무한대 값 처리
                             X = X.replace([np.inf, -np.inf], np.nan)
                             
-                            # 检查剩余 NaN 并报告
+                            # 잔여 결측치 확인
                             nan_counts = X.isna().sum()
                             total_nans = nan_counts.sum()
                             if total_nans > 0:
                                 st.info(f"ℹ️ 입력 변수에 {total_nans}개의 결측치가 발견되어 처리됩니다.")
                             
-                            # 最终检查：确保没有 NaN 残留
+                            # 최종 검사
                             if X.isna().sum().sum() > 0:
                                 st.warning("⚠️ 일부 결측치 처리에 실패했습니다. 추가 정제가 필요합니다.")
                             
-                            #  전역 상태 저장
+                            # 전역 상태 저장
                             st.session_state.preprocess.update({
                                 "feature_cols": final_features,
                                 "imputer": imputer if num_cols else None,
@@ -331,10 +330,10 @@ elif st.session_state.step == 3:
                                 "encoders": encoders,
                                 "num_cols": num_cols,
                                 "cat_cols": cat_cols,
-                                "target_encoder": le_target # Y 인코더도 저장
+                                "target_encoder": le_target
                             })
                             
-                            # 处理된 데이터 저장
+                            # 처리된 데이터 저장
                             st.session_state.data["X_processed"] = X
                             st.session_state.data["y_processed"] = y
                             
@@ -343,11 +342,9 @@ elif st.session_state.step == 3:
                             
                         except Exception as e:
                             st.error(f"❌ 오류 발생: {str(e)}")
-                            
-                            
-
                 else:
-                    st.info("👈 먼저 [전처리 실행] 버튼을 눌러주세요.")
+                    # 버튼을 누르지 않았을 때 보이는 메시지
+                    st.info("👈 위 버튼을 눌러 전처리를 시작하세요.")
                     
 # ==============================================================================
 #  단계 3：모델 학습 (3개 모델 독립 분석 및 결과 확인)
