@@ -371,50 +371,73 @@ elif st.session_state.step == 2:
                 else:
                     st.info("👈 위 버튼을 눌러 전처리를 시작하세요.")
 # ==============================================================================
-#  단계 3：모델 학습 (3개 모델 독립 분석 및 결과 확인)
+#  단계 3：모델 학습 (3개 모델 설정 및 학습 - 리포트 제거 버전)
 # ==============================================================================
 elif st.session_state.step == 3:
-    st.subheader("🚀 모델 학습 및 독립 분석")
+    st.subheader("🚀 모델 학습 설정")
     
     if "X_processed" not in st.session_state.data:
         st.warning("⚠️ 먼저 [데이터 전처리] 단계를 완료하세요.")
     else:
-        st.info("💡 **Logic(선형/로지스틱)**, **Tree(의사결정나무)**, **Hybrid(하이브리드)** 세 가지 관점에서 데이터를 각각 분석합니다.")
-
         # -------------------------------------------------------------
-        # 1. 설정 영역
+        # 1. 분석 유형 선택
         # -------------------------------------------------------------
-        col1, col2 = st.columns(2)
+        st.markdown("### 1️⃣ 분석 유형 선택")
+        task_option = st.radio(
+            "데이터의 타겟(Y) 특성에 맞는 유형을 선택하세요:",
+            ["분류 (Classification) - 예: 합격/불합격, 0/1", 
+             "회귀 (Regression) - 예: 가격, 점수, 수치 예측"],
+            horizontal=True
+        )
+        st.session_state.task = "logit" if "분류" in task_option else "tree"
         
-        with col1:
-            st.markdown("#### 1️⃣ 분석 유형 선택")
-            task_option = st.radio(
-                "타겟(Y) 특성:",
-                ["분류 (Classification) - 예: 0/1, 합격/불합격", 
-                 "회귀 (Regression) - 예: 가격, 점수 예측"],
-                horizontal=True
-            )
-            st.session_state.task = "logit" if "분류" in task_option else "tree"
+        st.divider()
 
+        # -------------------------------------------------------------
+        # 2. 모델별 상세 정의 (Logic, Tree, Hybrid 3개 모두 표시)
+        # -------------------------------------------------------------
+        st.markdown("### 2️⃣ 모델별 상세 정의")
+        
+        # 3개의 컬럼으로 나누어 설정 배치
+        col1, col2, col3 = st.columns(3)
+        
+        # [1] Logic 모델 정의
+        with col1:
+            st.markdown("#### 🔹 Logic 모델 정의")
+            st.caption("선형 관계를 설명하는 통계적 모델입니다.")
+            st.info("🔧 **설정**: Standard (기본)")
+            # 필요하다면 여기에 규제 강도(C) 등의 슬라이더를 추가할 수 있습니다.
+
+        # [2] Tree 모델 정의
         with col2:
-            st.markdown("#### 2️⃣ Hybrid 모델 정의")
-            st.caption("독립된 두 모델(Logic/Tree)을 어떤 비율로 참조하여 'Hybrid' 결과를 만들지 설정합니다.")
+            st.markdown("#### 🌳 Tree 모델 정의")
+            st.caption("데이터의 규칙을 학습하는 트리 모델입니다.")
+            # Tree 모델의 핵심 파라미터인 Max Depth 설정 추가
+            tree_depth = st.slider("최대 깊이 (Max Depth)", 1, 20, 5, key="tree_depth")
+            st.write(f"👉 깊이 제한: {tree_depth}")
+
+        # [3] Hybrid 모델 정의 (스크린샷과 동일한 스타일)
+        with col3:
+            st.markdown("#### ⚖️ Hybrid 모델 정의")
+            st.caption("두 모델을 결합하여 예측 성능을 높입니다.")
             reg_weight = st.slider(
                 "Logic 모델 반영 가중치", 
-                0.0, 1.0, 0.5, 0.1
+                0.0, 1.0, 0.5, 0.1, key="reg_weight"
             )
-            st.write(f"👉 Hybrid 구성: Logic {reg_weight*100:.0f}% + Tree {(1-reg_weight)*100:.0f}%")
+            st.write(f"👉 Logic {int(reg_weight*100)}% + Tree {int((1-reg_weight)*100)}%")
 
         st.divider()
 
         # -------------------------------------------------------------
-        # 2. 학습 실행
+        # 3. 학습 실행 (분석 리포트 삭제됨)
         # -------------------------------------------------------------
-        st.markdown("#### 3️⃣ 분석 시작")
+        st.markdown("### 3️⃣ 모델 학습 실행")
+        
+        # 테스트 데이터 비율 설정
         test_size = st.slider("테스트 데이터 비율 (검증용)", 0.1, 0.4, 0.2)
         
-        if st.button("🏁 3개 모델 학습 및 분석 실행", type="primary"):
-            with st.spinner("세 가지 모델이 데이터를 분석 중입니다..."):
+        if st.button("🏁 모델 학습 시작", type="primary"):
+            with st.spinner("모델 학습 중..."):
                 try:
                     X = st.session_state.data["X_processed"]
                     y = st.session_state.data["y_processed"]
@@ -425,19 +448,21 @@ elif st.session_state.step == 3:
                         X, y, test_size=test_size, random_state=42, stratify=stratify_opt
                     )
                     
-                    # 모델 초기화
+                    # 모델 초기화 (설정값 반영)
                     if st.session_state.task == "logit":
                         reg_model = LogisticRegression(max_iter=1000)
-                        dt_model = DecisionTreeClassifier(max_depth=5, random_state=42)
+                        # 사용자가 설정한 tree_depth 반영
+                        dt_model = DecisionTreeClassifier(max_depth=tree_depth, random_state=42)
                     else:
                         reg_model = LinearRegression()
-                        dt_model = DecisionTreeRegressor(max_depth=5, random_state=42)
+                        # 사용자가 설정한 tree_depth 반영
+                        dt_model = DecisionTreeRegressor(max_depth=tree_depth, random_state=42)
                     
-                    # [핵심] 각각 학습 수행
+                    # 학습 수행
                     reg_model.fit(X_train, y_train)
                     dt_model.fit(X_train, y_train)
                     
-                    # 모델 전역 저장
+                    # 결과 저장
                     st.session_state.models["regression"] = reg_model
                     st.session_state.models["decision_tree"] = dt_model
                     st.session_state.models["mixed_weights"] = {
@@ -446,75 +471,12 @@ elif st.session_state.step == 3:
                     }
                     st.session_state.data.update({"X_test": X_test, "y_test": y_test})
 
-                    # ---------------------------------------------------------
-                    # [핵심] 3개 모델 결과 확실하게 출력 (세로 배치로 변경하여 가독성 확보)
-                    # ---------------------------------------------------------
-                    st.success("✅ 학습 완료! 각 모델이 데이터를 어떻게 분석했는지 확인하세요.")
-                    st.divider()
-                    st.markdown("### 📊 학습 데이터(Training Data) 분석 리포트")
-                    
-                    # 점수 계산
-                    if st.session_state.task == "logit":
-                        # 분류 (Classification)
-                        p_train_reg = reg_model.predict_proba(X_train)[:, 1]
-                        p_train_dt = dt_model.predict_proba(X_train)[:, 1]
-                        p_train_hybrid = (p_train_reg * reg_weight) + (p_train_dt * (1 - reg_weight))
-                        
-                        pred_train_reg = reg_model.predict(X_train)
-                        pred_train_dt = dt_model.predict(X_train)
-                        pred_train_hybrid = (p_train_hybrid >= 0.5).astype(int)
-                        
-                        s1 = accuracy_score(y_train, pred_train_reg)
-                        s2 = accuracy_score(y_train, pred_train_dt)
-                        s3 = accuracy_score(y_train, pred_train_hybrid)
-                        metric_name = "정확도(Accuracy)"
-                        
-                    else:
-                        # 회귀 (Regression)
-                        pred_train_reg = reg_model.predict(X_train)
-                        pred_train_dt = dt_model.predict(X_train)
-                        pred_train_hybrid = (pred_train_reg * reg_weight) + (pred_train_dt * (1 - reg_weight))
-                        
-                        s1 = r2_score(y_train, pred_train_reg)
-                        s2 = r2_score(y_train, pred_train_dt)
-                        s3 = r2_score(y_train, pred_train_hybrid)
-                        metric_name = "설명력(R² Score)"
-
-                    # [수정됨] 결과를 명확히 보기 위해 st.container 또는 expander 사용 가능
-                    # 여기서는 확실하게 보이도록 각 결과를 박스로 감싸서 출력합니다.
-
-                    st.markdown("---")
-                    
-                    # 1. Logic 모델 결과
-                    with st.container():
-                        st.subheader("1️⃣ Logic (선형/로지스틱) 모델")
-                        cols = st.columns([1, 4])
-                        cols[0].metric(label=metric_name, value=f"{s1:.4f}")
-                        cols[1].info("데이터 간의 선형적 관계(비례/반비례)를 중심으로 학습했습니다.")
-                    
-                    st.markdown("---")
-
-                    # 2. Tree 모델 결과
-                    with st.container():
-                        st.subheader("2️⃣ Tree (의사결정나무) 모델")
-                        cols = st.columns([1, 4])
-                        cols[0].metric(label=metric_name, value=f"{s2:.4f}")
-                        cols[1].success("데이터의 규칙과 비선형적 패턴을 중심으로 학습했습니다.")
-
-                    st.markdown("---")
-
-                    # 3. Hybrid 모델 결과
-                    with st.container():
-                        st.subheader("3️⃣ Hybrid (하이브리드) 모델")
-                        cols = st.columns([1, 4])
-                        cols[0].metric(label=metric_name, value=f"{s3:.4f}")
-                        cols[1].warning(f"위 두 모델을 {reg_weight*100:.0f}% : {(1-reg_weight)*100:.0f}% 비율로 결합하여 최적의 해를 찾습니다.")
-
-                    st.markdown("---")
-                    st.write("👉 **모든 모델의 학습이 완료되었습니다. [성능 평가] 단계로 이동하세요.**")
+                    # [수정됨] 분석 리포트 출력 없이 깔끔하게 완료 메시지만 표시
+                    st.success("✅ 모든 모델의 학습이 완료되었습니다!")
+                    st.info("👉 **'성능 평가' 단계로 이동하여 결과를 확인하세요.**")
                     
                 except Exception as e:
-                    st.error(f"학습 및 분석 중 오류 발생: {e}")
+                    st.error(f"학습 중 오류 발생: {e}")
 
 
 # ==============================================================================
