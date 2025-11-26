@@ -394,32 +394,33 @@ elif st.session_state.step == 3:
         st.divider()
 
         # -------------------------------------------------------------
-        # 2. 모델별 상세 정의 (Logic, Tree, Hybrid 3개 모두 표시)
+        # 2. 모델별 상세 정의 (요청하신 스타일 반영)
         # -------------------------------------------------------------
         st.markdown("### 2️⃣ 모델별 상세 정의")
         
         # 3개의 컬럼으로 나누어 설정 배치
         col1, col2, col3 = st.columns(3)
         
-        # [1] Logic 모델 정의
+        # [1] Logic 모델 정의 (요청하신 내용 적용)
         with col1:
             st.markdown("#### 🔹 Logic 모델 정의")
             st.caption("선형 관계를 설명하는 통계적 모델입니다.")
-            st.info("🔧 **설정**: Standard (기본)")
-            # 필요하다면 여기에 규제 강도(C) 등의 슬라이더를 추가할 수 있습니다.
+            st.info("🔧 **설정**: Standard (기본)") 
+            # Logic 모델은 별도 슬라이더 없이 기본 설정 사용
 
-        # [2] Tree 모델 정의
+        # [2] Tree 모델 정의 (슬라이더 적용)
         with col2:
             st.markdown("#### 🌳 Tree 모델 정의")
             st.caption("데이터의 규칙을 학습하는 트리 모델입니다.")
-            # Tree 모델의 핵심 파라미터인 Max Depth 설정 추가
+            # Tree 모델의 복잡도(깊이) 조절 슬라이더
             tree_depth = st.slider("최대 깊이 (Max Depth)", 1, 20, 5, key="tree_depth")
             st.write(f"👉 깊이 제한: {tree_depth}")
 
-        # [3] Hybrid 모델 정의 (스크린샷과 동일한 스타일)
+        # [3] Hybrid 모델 정의 (슬라이더 적용)
         with col3:
             st.markdown("#### ⚖️ Hybrid 모델 정의")
             st.caption("두 모델을 결합하여 예측 성능을 높입니다.")
+            # 가중치 조절 슬라이더
             reg_weight = st.slider(
                 "Logic 모델 반영 가중치", 
                 0.0, 1.0, 0.5, 0.1, key="reg_weight"
@@ -471,7 +472,7 @@ elif st.session_state.step == 3:
                     }
                     st.session_state.data.update({"X_test": X_test, "y_test": y_test})
 
-                    # [수정됨] 분석 리포트 출력 없이 깔끔하게 완료 메시지만 표시
+                    # 분석 리포트 없이 깔끔하게 완료 메시지만 표시
                     st.success("✅ 모든 모델의 학습이 완료되었습니다!")
                     st.info("👉 **'성능 평가' 단계로 이동하여 결과를 확인하세요.**")
                     
