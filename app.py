@@ -234,7 +234,7 @@ elif st.session_state.step == 2:
             # 타겟 변수 선택
             target_col = st.selectbox("🎯 타겟 변수 (Y)", options=all_cols)
         
-        # [핵심 수정] 타겟 변수로 선택된 컬럼은 입력 변수 후보에서 제외
+        # [수정됨] 타겟 변수로 선택된 컬럼은 입력 변수 후보에서 즉시 제외
         feature_candidates = [c for c in all_cols if c != target_col]
         
         with col2:
@@ -253,8 +253,12 @@ elif st.session_state.step == 2:
             # 설정 저장
             st.session_state.preprocess["target_col"] = target_col
             
-            # [수정된 부분] 탭 객체 추출 방식 (리스트 언패킹)
-            [tab1] = st.tabs(["⚡ 전처리 실행"])
+            # ------------------------------------------------------------------
+            # [수정 핵심] st.tabs 에러 방지를 위한 안전한 코드
+            # st.tabs는 항상 리스트를 반환합니다. 변수 하나에 리스트 전체를 받습니다.
+            # ------------------------------------------------------------------
+            tabs = st.tabs(["⚡ 전처리 실행"])
+            tab1 = tabs[0]  # 리스트의 첫 번째 탭을 가져옴
             
             with tab1:
                 st.write(f"**Y(타겟) 결측치 제거** 및 **X(입력) 결측치 채우기**를 수행합니다.")
@@ -262,7 +266,7 @@ elif st.session_state.step == 2:
                 if st.button("🚀 전처리 및 정제 시작", type="primary"):
                     with st.spinner("데이터 정제 중..."):
                         try:
-                            # [안전 장치 추가] 입력 변수(X)에 타겟 변수(Y)가 포함되어 있다면 강제 제거
+                            # [안전 장치] 입력 변수(X)에 타겟 변수(Y)가 포함되어 있다면 강제 제거
                             if target_col in selected_features:
                                 selected_features.remove(target_col)
                                 st.warning(f"⚠️ 타겟 변수 '{target_col}'가 입력 변수에 포함되어 있어 자동으로 제외했습니다.")
@@ -274,7 +278,7 @@ elif st.session_state.step == 2:
                             if dropped_count > 0:
                                 st.warning(f"⚠️ 타겟 변수({target_col})값이 비어있는 {dropped_count}개 행을 제거했습니다.")
                             
-                            # X, y 분리 (필터링된 selected_features 사용)
+                            # X, y 분리
                             X = clean_df[selected_features].copy()
                             y = clean_df[target_col].copy()
                             
