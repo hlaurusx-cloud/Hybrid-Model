@@ -440,11 +440,11 @@ elif st.session_state.step == 3:
             st.caption("Logit + Tree 결합")
 
             reg_weight = st.slider(
-                "Logic 가중치",
+                "Logit 가중치",
                 0.0, 1.0, 0.5, 0.1,
                 key="reg_weight"
             )
-            st.caption(f"Logic {int(reg_weight*100)}% + Tree {int((1-reg_weight)*100)}%")
+            st.caption(f"Logit {int(reg_weight*100)}% + Tree {int((1-reg_weight)*100)}%")
 
         st.divider()
 
@@ -564,7 +564,7 @@ elif st.session_state.step == 4:
             # 3. 모델별 성능 비교표 출력
             st.markdown("### 1️⃣ 모델별 주요 성능 지표")
             df_metrics = pd.DataFrame([metrics_reg, metrics_dt, metrics_hybrid], 
-                                      index=["Logic Model", "Tree Model", "Hybrid Model"])
+                                      index=["Logit Model", "Tree Model", "Hybrid Model"])
             st.table(df_metrics.style.highlight_max(axis=0, color='lightgreen').format("{:.4f}"))
 
             # 4. ROC Curve 비교 시각화
