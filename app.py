@@ -530,7 +530,7 @@ elif st.session_state.step == 4:
         dt_model = st.session_state.models["decision_tree"]
         w = st.session_state.models["mixed_weights"]
         
-        st.info(f"ℹ️ Hybrid 가중치: Logic {w['regression']*100:.0f}% + Tree {w['decision_tree']*100:.0f}%")
+        st.info(f"ℹ️ Hybrid 가중치: Logit {w['regression']*100:.0f}% + Tree {w['decision_tree']*100:.0f}%")
         
         # ----------------------------------------------------------------------
         # A. 분류 (Classification) 평가 로직 - [요청하신 기능 집중 구현]
@@ -574,7 +574,7 @@ elif st.session_state.step == 4:
                 fpr, tpr, _ = roc_curve(y_true, y_prob)
                 fig_roc.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=name, line=dict(color=color, width=2)))
 
-            add_roc_trace(y_test, prob_reg, "Logic", "blue")
+            add_roc_trace(y_test, prob_reg, "Logit", "blue")
             add_roc_trace(y_test, prob_dt, "Tree", "green")
             add_roc_trace(y_test, prob_hybrid, "Hybrid", "red")
             
@@ -598,7 +598,7 @@ elif st.session_state.step == 4:
                 return fig
 
             with cm_col1:
-                st.plotly_chart(plot_confusion_matrix(y_test, pred_reg, "Logic Model"), use_container_width=True)
+                st.plotly_chart(plot_confusion_matrix(y_test, pred_reg, "Logit Model"), use_container_width=True)
             with cm_col2:
                 st.plotly_chart(plot_confusion_matrix(y_test, pred_dt, "Tree Model"), use_container_width=True)
             with cm_col3:
