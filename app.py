@@ -349,79 +349,47 @@ elif st.session_state.step == 2:
                     st.info("👈 먼저 [전처리 실행] 버튼을 눌러주세요.")
                     
 # ==============================================================================
-#  단계 3：모델 학습 (핵심 수정 부분)
+#  단계 3：모델 학습 (3개 모델 동시 학습 및 비교 준비)
 # ==============================================================================
 elif st.session_state.step == 3:
-    st.subheader("🚀 모델 학습 설정")
+    st.subheader("🚀 모델 학습 (비교 분석)")
     
     if "X_processed" not in st.session_state.data:
         st.warning("⚠️ 먼저 [데이터 전처리] 단계를 완료하세요.")
     else:
-        # -------------------------------------------------------------
-        # 1. 분석 유형 선택 (분류 vs 회귀)
-        # -------------------------------------------------------------
-        st.markdown("#### 1️⃣ 분석 유형 선택")
-        task_option = st.radio(
-            "데이터의 타겟(Y) 특성에 맞는 유형을 선택하세요:",
-            ["분류 (Classification) - 예: 합격/불합격, 0/1", 
-             "회귀 (Regression) - 예: 가격, 점수, 수치 예측"],
-            horizontal=True
-        )
+        st.info("💡 **Logic(선형/로지스틱)**, **Tree(의사결정나무)**, 그리고 **Hybrid(하이브리드)** 모델을 모두 학습하여 성능을 비교합니다.")
+
+        col1, col2 = st.columns(2)
         
-        # task 상태 업데이트
-        if "분류" in task_option:
-            st.session_state.task = "logit"
-        else:
-            st.session_state.task = "tree" # 내부 로직상 tree/regression 구분을 위해 사용
+        # 1. 분석 유형 선택
+        with col1:
+            st.markdown("#### 1️⃣ 분석 유형 선택")
+            task_option = st.radio(
+                "타겟(Y) 특성:",
+                ["분류 (Classification)", "회귀 (Regression)"],
+                horizontal=True
+            )
+            # task 설정
+            st.session_state.task = "logit" if "분류" in task_option else "tree"
+
+        # 2. 하이브리드 가중치 설정 (비교를 위해 정의 필요)
+        with col2:
+            st.markdown("#### 2️⃣ 하이브리드 가중치 설정")
+            st.caption("비교 대상인 '하이브리드 모델'을 만들 때 사용할 가중치를 설정합니다.")
+            reg_weight = st.slider(
+                "Logic 모델 반영 비율 (나머지는 Tree)", 
+                min_value=0.0, max_value=1.0, value=0.5, step=0.1
+            )
+            st.write(f"⚖️ Hybrid 구성: **Logic {reg_weight*100:.0f}% + Tree {(1-reg_weight)*100:.0f}%**")
 
         st.divider()
 
-        # -------------------------------------------------------------
-        # 2. 모델 전략 선택 (Decision Tree / Logic / Hybrid)
-        # -------------------------------------------------------------
-        st.markdown("#### 2️⃣ 사용할 모델 전략 선택")
+        # 3. 학습 실행
+        st.markdown("#### 3️⃣ 전체 모델 학습 실행")
+        test_size = st.slider("테스트 데이터 비율 (Test Size)", 0.1, 0.4, 0.2)
         
-        # 3가지 옵션을 탭으로 구현
-        model_tabs = st.tabs(["🌲 Decision Tree (의사결정나무)", "📈 Logic (로지스틱/선형회귀)", "⚖️ Hybrid (하이브리드 모형)"])
-        
-        selected_strategy = None
-        current_reg_weight = 0.5 # 초기값
-
-        with model_tabs[0]:
-            st.caption("의사결정나무 모델만 사용하여 예측합니다. (해석 용이, 비선형 관계 파악)")
-            if st.checkbox("Decision Tree 선택", key="sel_dt"):
-                selected_strategy = "dt"
-                current_reg_weight = 0.0 # 회귀 비중 0 -> 트리 100%
-
-        with model_tabs[1]:
-            st.caption("로지스틱(분류) 또는 선형(회귀) 모델만 사용하여 예측합니다. (변수 영향력 파악 용이)")
-            if st.checkbox("Logic(회귀/로지스틱) 선택", key="sel_reg"):
-                selected_strategy = "reg"
-                current_reg_weight = 1.0 # 회귀 비중 100%
-
-        with model_tabs[2]:
-            st.caption("두 모델을 결합하여 예측 성능을 극대화합니다.")
-            if st.checkbox("Hybrid 모형 선택", value=True, key="sel_hybrid"): # 기본값
-                selected_strategy = "hybrid"
-                st.markdown("---")
-                st.write("**Hybrid 가중치 설정**")
-                current_reg_weight = st.slider(
-                    "Logic(회귀) 모델 반영 비율", 
-                    min_value=0.0, max_value=1.0, value=0.5, step=0.1,
-                    help="값이 높을수록 로지스틱/선형회귀의 영향력이 커집니다."
-                )
-                st.write(f"👉 **Logic: {current_reg_weight * 100:.0f}%** +  **Tree: {(1-current_reg_weight) * 100:.0f}%**")
-
-        st.divider()
-
-        # -------------------------------------------------------------
-        # 3. 데이터 분할 및 학습 실행
-        # -------------------------------------------------------------
-        st.markdown("#### 3️⃣ 학습 실행")
-        test_size = st.slider("테스트 데이터 비율", 0.1, 0.4, 0.2)
-        
-        if st.button("🏁 모델 학습 시작", type="primary"):
-            with st.spinner("모델을 학습 중입니다..."):
+        if st.button("🏁 3개 모델 동시 학습 시작", type="primary"):
+            with st.spinner("Logic, Tree, Hybrid 모델을 모두 학습 중입니다..."):
                 try:
                     X = st.session_state.data["X_processed"]
                     y = st.session_state.data["y_processed"]
@@ -440,106 +408,139 @@ elif st.session_state.step == 3:
                         reg_model = LinearRegression()
                         dt_model = DecisionTreeRegressor(max_depth=5, random_state=42)
                     
-                    # 학습 수행 (항상 둘 다 학습해두고, 예측 시 가중치로 조절하는 방식이 안전함)
+                    # [핵심] 두 모델 모두 학습 (선택이 아니라 필수)
                     reg_model.fit(X_train, y_train)
                     dt_model.fit(X_train, y_train)
                     
-                    # 결과 저장
+                    # 모델 저장
                     st.session_state.models["regression"] = reg_model
                     st.session_state.models["decision_tree"] = dt_model
                     
-                    # [핵심] 선택한 전략에 따라 가중치 저장
-                    # Decision Tree 탭 선택 -> reg=0
-                    # Logic 탭 선택 -> reg=1
-                    # Hybrid 탭 선택 -> reg=slider값
-                    
-                    # UI의 Checkbox 로직이 배타적이지 않을 수 있어, 마지막 선택 기준으로 우선순위 정리
-                    # (실제 앱에서는 st.radio를 쓰는게 더 깔끔하지만, 탭 안에 넣기 위해 로직 처리)
-                    final_reg_weight = 0.5 # Default Hybrid
-                    
-                    if selected_strategy == "dt":
-                        final_reg_weight = 0.0
-                        st.info("ℹ️ **Decision Tree 단일 모델**로 설정되었습니다.")
-                    elif selected_strategy == "reg":
-                        final_reg_weight = 1.0
-                        st.info("ℹ️ **Logic (회귀/로지스틱) 단일 모델**로 설정되었습니다.")
-                    elif selected_strategy == "hybrid":
-                        final_reg_weight = current_reg_weight
-                        st.info(f"ℹ️ **Hybrid 모델 (Logic {final_reg_weight:.1f} : Tree {1-final_reg_weight:.1f})**로 설정되었습니다.")
-                    
+                    # 하이브리드 계산을 위한 가중치 저장
                     st.session_state.models["mixed_weights"] = {
-                        "regression": final_reg_weight,
-                        "decision_tree": 1.0 - final_reg_weight
+                        "regression": reg_weight,
+                        "decision_tree": 1.0 - reg_weight
                     }
                     
+                    # 테스트 데이터 저장
                     st.session_state.data.update({"X_test": X_test, "y_test": y_test})
-                    st.success("✅ 학습 완료!")
+                    
+                    st.success("✅ 모든 모델 학습 완료! 다음 [성능 평가] 단계에서 비교 결과를 확인하세요.")
                     
                 except Exception as e:
                     st.error(f"학습 중 오류 발생: {e}")
 
 # ==============================================================================
-#  단계 4：성능 평가 (기존 단계 5 -> 4로 이동)
+#  단계 4：성능 평가 (3개 모델 비교 표 및 차트 출력)
 # ==============================================================================
 elif st.session_state.step == 4:
-    st.subheader("📈 모델 성능 평가")
+    st.subheader("📈 모델 성능 비교 평가")
     
     if st.session_state.models["regression"] is None:
         st.warning("⚠️ 먼저 [모델 학습] 단계를 완료하세요")
     else:
+        # 데이터 및 모델 로드
         X_test = st.session_state.data["X_test"]
         y_test = st.session_state.data["y_test"]
+        
+        reg_model = st.session_state.models["regression"]
+        dt_model = st.session_state.models["decision_tree"]
         w = st.session_state.models["mixed_weights"]
         
-        reg = st.session_state.models["regression"]
-        dt = st.session_state.models["decision_tree"]
+        st.markdown("### 1️⃣ 모델별 성능 비교표")
         
-        # 모델 정보 표시
-        st.info(f"ℹ️ 평가 모델 구성 - Logic: {w['regression']*100:.0f}% / Tree: {w['decision_tree']*100:.0f}%")
-
+        # ---------------------------
+        # A. 분류 (Classification) 비교
+        # ---------------------------
         if st.session_state.task == "logit":
-            p_reg = reg.predict_proba(X_test)[:, 1]
-            p_dt = dt.predict_proba(X_test)[:, 1]
-            p_mix = (p_reg * w["regression"]) + (p_dt * w["decision_tree"])
-            pred_mix = (p_mix >= 0.5).astype(int)
+            # 1. 각 모델 예측 확률 계산
+            prob_reg = reg_model.predict_proba(X_test)[:, 1]
+            prob_dt = dt_model.predict_proba(X_test)[:, 1]
+            prob_hybrid = (prob_reg * w["regression"]) + (prob_dt * w["decision_tree"])
             
-            acc = accuracy_score(y_test, pred_mix)
-            try: roc_auc = auc(*roc_curve(y_test, p_mix)[:2])
-            except: roc_auc = 0.0
+            # 2. 예측 클래스 결정 (Threshold 0.5)
+            pred_reg = reg_model.predict(X_test)
+            pred_dt = dt_model.predict(X_test)
+            pred_hybrid = (prob_hybrid >= 0.5).astype(int)
             
-            col1, col2 = st.columns(2)
-            col1.metric("정확도 (Accuracy)", f"{acc:.2%}")
-            col2.metric("AUC Score", f"{roc_auc:.3f}")
+            # 3. 성능 지표 계산 함수
+            def calc_cls_metrics(y_true, y_pred, y_prob):
+                acc = accuracy_score(y_true, y_pred)
+                try:
+                    auc_score = auc(*roc_curve(y_true, y_prob)[:2])
+                except:
+                    auc_score = 0.0
+                return [acc, auc_score]
+
+            # 4. 데이터프레임 생성
+            m_reg = calc_cls_metrics(y_test, pred_reg, prob_reg)
+            m_dt = calc_cls_metrics(y_test, pred_dt, prob_dt)
+            m_hybrid = calc_cls_metrics(y_test, pred_hybrid, prob_hybrid)
             
-            fpr, tpr, _ = roc_curve(y_test, p_mix)
-            fig = px.area(x=fpr, y=tpr, title="ROC Curve", labels=dict(x="FPR", y="TPR"))
-            fig.add_shape(type='line', line=dict(dash='dash'), x0=0, x1=1, y0=0, y1=1)
+            metrics_df = pd.DataFrame(
+                [m_reg, m_dt, m_hybrid],
+                columns=["정확도 (Accuracy)", "AUC Score"],
+                index=["Logic (로지스틱)", "Tree (의사결정나무)", "Hybrid (하이브리드)"]
+            )
+            
+            # 표 출력
+            st.table(metrics_df.style.highlight_max(axis=0, color='lightgreen'))
+            
+            # 차트 출력 (ROC Curve 중첩)
+            st.markdown("### 2️⃣ ROC Curve 비교")
+            fig = go.Figure()
+            
+            def add_roc_trace(y_true, y_prob, name, color):
+                fpr, tpr, _ = roc_curve(y_true, y_prob)
+                fig.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=name, line=dict(color=color)))
+
+            add_roc_trace(y_test, prob_reg, "Logic", "blue")
+            add_roc_trace(y_test, prob_dt, "Tree", "green")
+            add_roc_trace(y_test, prob_hybrid, "Hybrid", "red")
+            
+            fig.add_shape(type='line', line=dict(dash='dash', color='gray'), x0=0, x1=1, y0=0, y1=1)
+            fig.update_layout(title="ROC Curve Comparison", xaxis_title="False Positive Rate", yaxis_title="True Positive Rate")
             st.plotly_chart(fig, width='stretch')
-            
+
+        # ---------------------------
+        # B. 회귀 (Regression) 비교
+        # ---------------------------
         else:
-            p_reg = reg.predict(X_test)
-            p_dt = dt.predict(X_test)
-            p_mix = (p_reg * w["regression"]) + (p_dt * w["decision_tree"])
+            # 1. 각 모델 예측값 계산
+            pred_reg = reg_model.predict(X_test)
+            pred_dt = dt_model.predict(X_test)
+            pred_hybrid = (pred_reg * w["regression"]) + (pred_dt * w["decision_tree"])
             
-            mae = mean_absolute_error(y_test, p_mix)
-            r2 = r2_score(y_test, p_mix)
+            # 2. 성능 지표 계산 함수
+            def calc_reg_metrics(y_true, y_pred):
+                mae = mean_absolute_error(y_true, y_pred)
+                rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+                r2 = r2_score(y_true, y_pred)
+                return [mae, rmse, r2]
             
-            col1, col2 = st.columns(2)
-            col1.metric("MAE (평균오차)", f"{mae:.4f}")
-            col2.metric("R² (설명력)", f"{r2:.4f}")
+            # 3. 데이터프레임 생성
+            m_reg = calc_reg_metrics(y_test, pred_reg)
+            m_dt = calc_reg_metrics(y_test, pred_dt)
+            m_hybrid = calc_reg_metrics(y_test, pred_hybrid)
             
-            fig = px.scatter(x=y_test, y=p_mix, title="Actual vs Predicted")
-            fig.add_shape(type='line', line=dict(dash='dash', color='red'), x0=y_test.min(), x1=y_test.max(), y0=y_test.min(), y1=y_test.max())
+            metrics_df = pd.DataFrame(
+                [m_reg, m_dt, m_hybrid],
+                columns=["MAE (평균오차)", "RMSE", "R² (결정계수)"],
+                index=["Logic (선형회귀)", "Tree (의사결정나무)", "Hybrid (하이브리드)"]
+            )
+            
+            # 표 출력 (MAE, RMSE는 낮을수록 좋음 / R2는 높을수록 좋음)
+            st.table(metrics_df.style.format("{:.4f}"))
+            
+            # 차트 출력 (비교 막대 그래프)
+            st.markdown("### 2️⃣ 성능 지표 시각화 (R² Score)")
+            
+            # Plotly Bar Chart
+            comp_df = metrics_df.reset_index().rename(columns={"index": "Model"})
+            fig = px.bar(
+                comp_df, x="Model", y="R² (결정계수)", 
+                color="Model", text="R² (결정계수)",
+                title="모델별 R² Score 비교 (높을수록 좋음)"
+            )
+            fig.update_traces(texttemplate='%{text:.3f}', textposition='outside')
             st.plotly_chart(fig, width='stretch')
-        
-        # 변수 중요도 (Tree 기준)
-        if hasattr(dt, "feature_importances_"):
-            st.divider()
-            st.markdown("### 🌳 변수 중요도 (Decision Tree 기준)")
-            imp_df = pd.DataFrame({
-                "Feature": st.session_state.preprocess["feature_cols"],
-                "Importance": dt.feature_importances_
-            }).sort_values("Importance", ascending=False).head(10)
-            
-            fig_imp = px.bar(imp_df, x="Importance", y="Feature", orientation='h', title="Top 10 Important Features")
-            st.plotly_chart(fig_imp, width='stretch')
