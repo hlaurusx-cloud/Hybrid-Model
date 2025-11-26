@@ -626,7 +626,7 @@ elif st.session_state.step == 4:
             m3 = get_reg_metrics(y_test, pred_hybrid)
             
             st.markdown("### 1️⃣ 회귀 모델 성능 지표")
-            df_reg = pd.DataFrame([m1, m2, m3], index=["Logic", "Tree", "Hybrid"])
+            df_reg = pd.DataFrame([m1, m2, m3], index=["Logit", "Tree", "Hybrid"])
             st.table(df_reg.style.format("{:.4f}"))
             
             st.markdown("### 2️⃣ 예측값 vs 실제값 비교")
