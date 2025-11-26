@@ -46,7 +46,7 @@ for i, step_name in enumerate(steps):
 # ----------------------
 # 단계 1：데이터 업로드（단일 파일만 업로드）
 # ----------------------
-elif st.session_state.step == 1:
+elif st.session_state.step == 0:
     st.subheader("📤 데이터 업로드（단일 파일）")
     st.markdown("지원 형식：CSV、Parquet、Excel（.xlsx/.xls）")
     st.markdown("⚠️  파일에 타겟 열（예측할 변수）과 특징 열（예측에 사용할 변수）이 모두 포함되어야 합니다")
