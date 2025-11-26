@@ -47,7 +47,7 @@ st.sidebar.title("📌 하이브리드모형 작업 흐름")
 st.sidebar.divider()
 
 # 단계导航 버튼
-steps = ["데이터 업로드", "데이터 시각화", "데이터 전처리", "모델 학습", "모델 예측", "성능 평가"]
+steps = ["데이터 업로드", "데이터 시각화", "데이터 전처리", "모델 학습", "성능 평가"]
 for i, step_name in enumerate(steps):
     if st.sidebar.button(step_name, key=f"btn_{i}"):
         st.session_state.step = i
