@@ -410,7 +410,7 @@ elif st.session_state.step == 3:
             st.caption("데이터 분할 비율 설정")
 
             test_size_logic = st.slider(
-                "Logic Test 비율",
+                "Logit Test 비율",
                 0.1, 0.4, 0.2,
                 key="logic_test_size"
             )
@@ -437,7 +437,7 @@ elif st.session_state.step == 3:
         # -------------------------------------------------------------
         with col3:
             st.markdown("#### ⚖️ Hybrid 모델")
-            st.caption("Logic + Tree 결합")
+            st.caption("Logit + Tree 결합")
 
             reg_weight = st.slider(
                 "Logic 가중치",
