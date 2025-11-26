@@ -344,38 +344,7 @@ elif st.session_state.step == 2:
                         except Exception as e:
                             st.error(f"❌ 오류 발생: {str(e)}")
                             
-            with tab2:
-                if "X_processed" in st.session_state.data and st.session_state.data["X_processed"] is not None:
-                    if st.button("🔍 변수 중요도 확인"):
-                        #  저장된 처리 데이터 가져오기
-                        X_p = st.session_state.data["X_processed"]
-                        y_p = st.session_state.data["y_processed"]
-                        
-                        # NaN 체크 (디버깅용)
-                        if X_p.isna().sum().sum() > 0 or y_p.isna().sum() > 0:
-                            st.error("❌ 데이터에 여전히 결측치(NaN)가 남아있습니다. [전처리 실행] 버튼을 다시 눌러주세요.")
-                        else:
-                            try:
-                                # 模型 피팅
-                                if st.session_state.task == "logit":
-                                    model = DecisionTreeClassifier(max_depth=5, random_state=42)
-                                else:
-                                    model = DecisionTreeRegressor(max_depth=5, random_state=42)
-                                
-                                model.fit(X_p, y_p)
-                                
-                                imp = pd.DataFrame({
-                                    "Feature": X_p.columns,
-                                    "Importance": model.feature_importances_
-                                }).sort_values("Importance", ascending=False)
-                                
-                                st.plotly_chart(
-                                    px.bar(imp, x="Importance", y="Feature", orientation='h', title="변수 중요도"),
-                                    width='stretch'
-                                )
-                            except Exception as e:
-                                st.error(f"분석 실패: {e}")
-                                st.warning("타겟 변수(Y)의 데이터 타입을 확인해주세요 (회귀인데 문자가 들어있는지 등).")
+
                 else:
                     st.info("👈 먼저 [전처리 실행] 버튼을 눌러주세요.")
                     
