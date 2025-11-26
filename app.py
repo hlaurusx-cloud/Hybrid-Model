@@ -214,138 +214,6 @@ elif st.session_state.step == 1:
             else:
                 st.info("Y축 변수를 선택하면 그래프가 표시됩니다.")
 
-# ----------------------
-#  단계 2：데이터 전처리 (기존 단계 3에서 이동)
-# ----------------------
-elif st.session_state.step == 2:
-    st.subheader("🧹 데이터 전처리 & 변수 선택")
-    
-    if st.session_state.data["merged"] is None:
-        st.warning("⚠️ 먼저 '데이터 업로드' 단계를 완료하세요.")
-    else:
-        # 원본 데이터 로드
-        df_origin = st.session_state.data["merged"].copy()
-        all_cols = df_origin.columns.tolist()
-
-        st.markdown("### 1️⃣ 분석 변수 설정")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            target_col = st.selectbox("🎯 타겟 변수 (Y)", options=all_cols)
-        
-        feature_candidates = [c for c in all_cols if c != target_col]
-        
-        with col2:
-            default_feats = feature_candidates[:10] if len(feature_candidates) > 10 else feature_candidates
-            selected_features = st.multiselect(
-                "📋 입력 변수 (X)",
-                options=feature_candidates,
-                default=default_feats
-            )
-        
-        st.divider()
-
-        if not selected_features:
-            st.error("⚠️ 분석할 변수를 선택해주세요.")
-        else:
-            # 설정 저장
-            st.session_state.preprocess["target_col"] = target_col
-            
-            # [수정된 부분] 리스트 언패킹([...])을 사용하여 탭 객체를 추출해야 합니다.
-            [tab1] = st.tabs(["⚡ 전처리 실행"])
-            
-            with tab1:
-                st.write(f"**Y(타겟) 결측치 제거** 및 **X(입력) 결측치 채우기**를 수행합니다.")
-                
-                if st.button("🚀 전처리 및 정제 시작", type="primary"):
-                    with st.spinner("데이터 정제 중..."):
-                        try:
-                            # [핵심 1] 타겟(Y)이 비어있는 행 제거
-                            clean_df = df_origin.dropna(subset=[target_col]).reset_index(drop=True)
-                            
-                            dropped_count = len(df_origin) - len(clean_df)
-                            if dropped_count > 0:
-                                st.warning(f"⚠️ 타겟 변수({target_col})값이 비어있는 {dropped_count}개 행을 제거했습니다.")
-                            
-                            # X, y 분리
-                            X = clean_df[selected_features].copy()
-                            y = clean_df[target_col].copy()
-                            
-                            # [핵심 2] 타겟(Y) 데이터 인코딩
-                            le_target = None
-                            if st.session_state.task == "logit" and y.dtype == 'object':
-                                le_target = LabelEncoder()
-                                y = pd.Series(le_target.fit_transform(y), index=y.index)
-                                st.info("ℹ️ 타겟 변수가 문자열이라 자동으로 숫자로 변환(Encoding)되었습니다.")
-                            
-                            # X 데이터 전처리 시작
-                            num_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
-                            cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
-                            
-                            # 1. 값이 없는(All-NaN) 수치형 컬럼 제외
-                            valid_num_cols = [c for c in num_cols if X[c].notna().sum() > 0]
-                            num_cols = valid_num_cols 
-
-                            # 변환기 준비
-                            imputer = SimpleImputer(strategy='mean')
-                            scaler = StandardScaler()
-                            encoders = {}
-
-                            # 2. 수치형 처리
-                            if num_cols:
-                                X_imputed = imputer.fit_transform(X[num_cols])
-                                X_scaled = scaler.fit_transform(X_imputed)
-                                X[num_cols] = pd.DataFrame(X_scaled, columns=num_cols, index=X.index)
-                            
-                            # 3. 범주형 처리
-                            for col in cat_cols:
-                                X[col] = X[col].fillna("Unknown").astype(str)
-                                le = LabelEncoder()
-                                trans = le.fit_transform(X[col])
-                                X[col] = pd.Series(trans, index=X.index)
-                                encoders[col] = le
-                            
-                            # 최종 컬럼 정리
-                            final_features = num_cols + cat_cols
-                            X = X[final_features]
-                            
-                            # 무한대 값 처리
-                            X = X.replace([np.inf, -np.inf], np.nan)
-                            
-                            # 잔여 결측치 확인
-                            nan_counts = X.isna().sum()
-                            total_nans = nan_counts.sum()
-                            if total_nans > 0:
-                                st.info(f"ℹ️ 입력 변수에 {total_nans}개의 결측치가 발견되어 처리됩니다.")
-                            
-                            # 최종 검사
-                            if X.isna().sum().sum() > 0:
-                                st.warning("⚠️ 일부 결측치 처리에 실패했습니다. 추가 정제가 필요합니다.")
-                            
-                            # 전역 상태 저장
-                            st.session_state.preprocess.update({
-                                "feature_cols": final_features,
-                                "imputer": imputer if num_cols else None,
-                                "scaler": scaler if num_cols else None,
-                                "encoders": encoders,
-                                "num_cols": num_cols,
-                                "cat_cols": cat_cols,
-                                "target_encoder": le_target
-                            })
-                            
-                            # 처리된 데이터 저장
-                            st.session_state.data["X_processed"] = X
-                            st.session_state.data["y_processed"] = y
-                            
-                            st.success(f"✅ 전처리 완료! (데이터 수: {len(X)}행)")
-                            st.dataframe(X.head(), width='stretch')
-                            
-                        except Exception as e:
-                            st.error(f"❌ 오류 발생: {str(e)}")
-                else:
-                    # 버튼을 누르지 않았을 때 보이는 메시지
-                    st.info("👈 위 버튼을 눌러 전처리를 시작하세요.")
-                    
 # ==============================================================================
 #  단계 3：모델 학습 (3개 모델 독립 분석 및 결과 확인)
 # ==============================================================================
@@ -478,9 +346,7 @@ elif st.session_state.step == 3:
                     st.write("👉 **다음 [성능 평가] 단계로 이동하여 테스트 데이터(Test Data)에 대한 검증 결과를 확인하세요.**")
                     
                 except Exception as e:
-                    st.error(f"학습 및 분석 중 오류 발생: {e}")
-                    
-# ==============================================================================
+                    st.error(f"학습 및 분석 중 오류 발생: {e}")# ==============================================================================
 #  단계 4：성능 평가 (3개 모델 비교 표 및 차트 출력)
 # ==============================================================================
 elif st.session_state.step == 4:
