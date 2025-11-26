@@ -215,10 +215,10 @@ elif st.session_state.step == 1:
                 st.info("Y축 변수를 선택하면 그래프가 표시됩니다.")
 
 # ----------------------
-#  단계 2：데이터 전처리 (기존 단계 3에서 이동)
+#  단계 2：데이터 전처리 (완전 수정: 타겟 결측치 제거 및 자동 인코딩)
 # ----------------------
-elif st.session_state.step == 2:
-    st.subheader("🧹 데이터 전처리 & 변수 선택")
+elif st.session_state.step == 3:
+    st.subheader("🧹 데이터 전처리 & 변수 선택 (Final Fix)")
     
     if st.session_state.data["merged"] is None:
         st.warning("⚠️ 먼저 '데이터 업로드' 단계를 완료하세요.")
@@ -343,6 +343,7 @@ elif st.session_state.step == 2:
                             
                         except Exception as e:
                             st.error(f"❌ 오류 발생: {str(e)}")
+                            
                             
 
                 else:
