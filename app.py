@@ -374,7 +374,7 @@ elif st.session_state.step == 2:
 
 
 # ==============================================================================
-#  단계 3：모델 학습 (데이터 분할을 맨 위로, 모델 설정을 그 아래로 배치)
+#  단계 3：모델 학습 (데이터 파티셔닝 시각화 추가)
 # ==============================================================================
 elif st.session_state.step == 3:
     st.subheader("🚀 모델 학습 설정")
@@ -397,25 +397,56 @@ elif st.session_state.step == 3:
         st.divider()
 
         # -------------------------------------------------------------
-        # 2. 모델 설정 및 데이터 분할 (통합 섹션)
+        # 2. 모델 설정 및 데이터 분할 (파티셔닝 시각화 추가)
         # -------------------------------------------------------------
         st.markdown("### 2️⃣ 모델 설정 및 데이터 분할")
         
-        # [(1) 데이터 분할 설정 - 맨 위에 배치]
+        # [A] 데이터 분할 설정 (공통)
         st.markdown("#### ⚙️ 데이터 분할 설정 (공통)")
-        st.caption("설정하신 비율은 Logic, Tree, Hybrid 3개 모델에 **동일하게(각각)** 적용됩니다.")
         
+        # 슬라이더
         test_size = st.slider(
             "테스트 데이터 비율 (검증용)", 
             0.1, 0.4, 0.2, 
             key="common_test_size",
-            help="전체 데이터 중 학습에 사용하지 않고, 모델 성능 검증을 위해 남겨둘 데이터의 비율입니다."
+            help="전체 데이터 중 학습에 사용하지 않고, 검증용으로 남겨둘 데이터의 비율입니다."
         )
-        
+
+        # ---------------------------------------------------------
+        # [시각화] 데이터 파티셔닝 미리보기 (Live Preview)
+        # ---------------------------------------------------------
+        if "X_processed" in st.session_state.data:
+            total_count = len(st.session_state.data["X_processed"])
+            test_count = int(total_count * test_size)
+            train_count = total_count - test_count
+            
+            # 파티셔닝 시각화 (Stacked Bar)
+            fig_part = go.Figure()
+            fig_part.add_trace(go.Bar(
+                y=['Total Data'], x=[train_count], name=f'학습 데이터 (Train): {train_count}건', 
+                orientation='h', marker=dict(color='#2E86C1') # 파란색
+            ))
+            fig_part.add_trace(go.Bar(
+                y=['Total Data'], x=[test_count], name=f'검증 데이터 (Test): {test_count}건', 
+                orientation='h', marker=dict(color='#E74C3C') # 빨간색
+            ))
+            fig_part.update_layout(
+                barmode='stack', 
+                height=100, 
+                margin=dict(l=20, r=20, t=10, b=10),
+                xaxis=dict(showticklabels=False, title="데이터 파티셔닝 비율"),
+                yaxis=dict(showticklabels=False),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            st.plotly_chart(fig_part, use_container_width=True)
+            
+            # 텍스트 요약
+            st.caption(f"📊 전체 **{total_count:,}**개 데이터 중 **{train_count:,}**개로 학습하고, **{test_count:,}**개로 성능을 평가합니다.")
+
         st.markdown("---")
 
-        # [(2) 모델별 상세 설정 - 3단 컬럼]
-        st.markdown("#### 🛠️ 모델별 상세 파라미터 설정")
+        # [B] 모델별 상세 설정 (Logic / Tree / Hybrid)
+        st.markdown("#### 🛠️ 모델별 상세 설정")
         col1, col2, col3 = st.columns(3)
         
         # [Logic 모델]
