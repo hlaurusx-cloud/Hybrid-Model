@@ -406,7 +406,7 @@ elif st.session_state.step == 3:
         # 🔹 Logic 모델
         # -------------------------------------------------------------
         with col1:
-            st.markdown("#### 🔹 Logic 모델")
+            st.markdown("#### 🔹 Logit 모델")
             st.caption("데이터 분할 비율 설정")
 
             test_size_logic = st.slider(
