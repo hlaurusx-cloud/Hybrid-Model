@@ -251,7 +251,7 @@ elif st.session_state.step == 2:
             # 설정 저장
             st.session_state.preprocess["target_col"] = target_col
             
-            tab1 = st.tabs(["⚡ 전처리 실행"])
+            [tab1] = st.tabs(["⚡ 전처리 실행"])
             
             with tab1:
                 st.write(f"**Y(타겟) 결측치 제거** 및 **X(입력) 결측치 채우기**를 수행합니다.")
