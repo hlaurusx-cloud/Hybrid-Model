@@ -371,8 +371,10 @@ elif st.session_state.step == 2:
                             st.error(f"❌ 전처리 중 오류 발생: {str(e)}")
                 else:
                     st.info("👈 위 버튼을 눌러 전처리를 시작하세요.")
+
+
 # ==============================================================================
-#  단계 3：모델 학습 (3개 모델 설정 및 학습 - 리포트 제거 버전)
+#  단계 3：모델 학습 (설정 통합 버전)
 # ==============================================================================
 elif st.session_state.step == 3:
     st.subheader("🚀 모델 학습 설정")
@@ -395,51 +397,43 @@ elif st.session_state.step == 3:
         st.divider()
 
         # -------------------------------------------------------------
-        # 2. 모델별 상세 정의 (요청하신 스타일 반영)
+        # 2. 모델 학습 설정 및 실행 (통합됨)
         # -------------------------------------------------------------
-        st.markdown("### 2️⃣ 모델별 상세 정의")
+        st.markdown("### 2️⃣ 모델 학습 설정 및 실행")
         
-        # 3개의 컬럼으로 나누어 설정 배치
+        # [A] 데이터 비율 설정
+        st.markdown("#### ⚙️ 데이터 분할 설정")
+        test_size = st.slider("테스트 데이터 비율 (검증용)", 0.1, 0.4, 0.2, help="전체 데이터 중 학습에 사용하지 않고 검증용으로 남겨둘 데이터의 비율입니다.")
+        
+        # [B] 모델별 상세 설정 (여기로 이동됨)
+        st.markdown("#### 🛠️ 모델별 상세 파라미터 설정")
         col1, col2, col3 = st.columns(3)
         
-        # [1] Logic 모델 정의 (요청하신 내용 적용)
+        # [Logic 모델]
         with col1:
-            st.markdown("#### 🔹 Logic 모델 정의")
-            st.caption("선형 관계를 설명하는 통계적 모델입니다.")
-            st.info("🔧 **설정**: Standard (기본)") 
-            # Logic 모델은 별도 슬라이더 없이 기본 설정 사용
+            st.markdown("##### 🔹 Logic 모델")
+            st.caption("선형/로지스틱 회귀")
+            st.info("🔧 **설정**: Standard (기본)")
 
-        # [2] Tree 모델 정의 (슬라이더 적용)
+        # [Tree 모델]
         with col2:
-            st.markdown("#### 🌳 Tree 모델 정의")
-            st.caption("데이터의 규칙을 학습하는 트리 모델입니다.")
-            # Tree 모델의 복잡도(깊이) 조절 슬라이더
+            st.markdown("##### 🌳 Tree 모델")
+            st.caption("의사결정나무")
             tree_depth = st.slider("최대 깊이 (Max Depth)", 1, 20, 5, key="tree_depth")
-            st.write(f"👉 깊이 제한: {tree_depth}")
+            st.caption(f"깊이 제한: {tree_depth}")
 
-        # [3] Hybrid 모델 정의 (슬라이더 적용)
+        # [Hybrid 모델]
         with col3:
-            st.markdown("#### ⚖️ Hybrid 모델 정의")
-            st.caption("두 모델을 결합하여 예측 성능을 높입니다.")
-            # 가중치 조절 슬라이더
-            reg_weight = st.slider(
-                "Logic 모델 반영 가중치", 
-                0.0, 1.0, 0.5, 0.1, key="reg_weight"
-            )
-            st.write(f"👉 Logic {int(reg_weight*100)}% + Tree {int((1-reg_weight)*100)}%")
+            st.markdown("##### ⚖️ Hybrid 모델")
+            st.caption("Logic + Tree 결합")
+            reg_weight = st.slider("Logic 가중치", 0.0, 1.0, 0.5, 0.1, key="reg_weight")
+            st.caption(f"비율: Logic {int(reg_weight*100)}% : Tree {int((1-reg_weight)*100)}%")
 
         st.divider()
 
-        # -------------------------------------------------------------
-        # 3. 학습 실행 (분석 리포트 삭제됨)
-        # -------------------------------------------------------------
-        st.markdown("### 3️⃣ 모델 학습 실행")
-        
-        # 테스트 데이터 비율 설정
-        test_size = st.slider("테스트 데이터 비율 (검증용)", 0.1, 0.4, 0.2)
-        
+        # [C] 학습 버튼
         if st.button("🏁 모델 학습 시작", type="primary"):
-            with st.spinner("모델 학습 중..."):
+            with st.spinner("3가지 모델을 모두 학습 중입니다..."):
                 try:
                     X = st.session_state.data["X_processed"]
                     y = st.session_state.data["y_processed"]
@@ -450,14 +444,12 @@ elif st.session_state.step == 3:
                         X, y, test_size=test_size, random_state=42, stratify=stratify_opt
                     )
                     
-                    # 모델 초기화 (설정값 반영)
+                    # 모델 초기화
                     if st.session_state.task == "logit":
                         reg_model = LogisticRegression(max_iter=1000)
-                        # 사용자가 설정한 tree_depth 반영
                         dt_model = DecisionTreeClassifier(max_depth=tree_depth, random_state=42)
                     else:
                         reg_model = LinearRegression()
-                        # 사용자가 설정한 tree_depth 반영
                         dt_model = DecisionTreeRegressor(max_depth=tree_depth, random_state=42)
                     
                     # 학습 수행
@@ -473,9 +465,9 @@ elif st.session_state.step == 3:
                     }
                     st.session_state.data.update({"X_test": X_test, "y_test": y_test})
 
-                    # 분석 리포트 없이 깔끔하게 완료 메시지만 표시
+                    # 완료 메시지
                     st.success("✅ 모든 모델의 학습이 완료되었습니다!")
-                    st.info("👉 **'성능 평가' 단계로 이동하여 결과를 확인하세요.**")
+                    st.info("👉 **'성능 평가' 단계로 이동하여 3개 모델의 성능을 비교하세요.**")
                     
                 except Exception as e:
                     st.error(f"학습 중 오류 발생: {e}")
