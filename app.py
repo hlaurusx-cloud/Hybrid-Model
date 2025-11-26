@@ -96,12 +96,25 @@ if st.session_state.step == 0:
             except Exception as e:
                 st.error(f"에러: {e}")
 
-    with tab2:
-        if st.button("기본 데이터 사용"):
-            st.info("기본 데이터 기능은 데모 파일이 서버에 있어야 작동합니다.")
+  with tab2:
+        DEFAULT_FILE_PATH = "combined_loan_data.csv" 
+        st.info(f"💡 **기본 데이터 설명**: 대출 관련 통합 데이터 (`{DEFAULT_FILE_PATH}`)")
+        
+        if st.button("기본 데이터 불러오기", type="primary"):
+            if os.path.exists(DEFAULT_FILE_PATH):
+                # 기본 파일도 안전하게 로드 시도
+                with open(DEFAULT_FILE_PATH, 'rb') as f:
+                    df_default, enc_used = load_csv_safe(f)
+                
+                if df_default is not None:
+                    st.session_state.data["merged"] = df_default.reset_index(drop=True)
+                    st.success(f"✅ 기본 데이터 로드 성공! ({len(df_default):,} 행, 인코딩: {enc_used})")
+                    st.rerun()
+                else:
+                    st.error("❌ 기본 파일을 읽을 수 없습니다 (인코딩 오류).")
+            else:
+                st.error(f"⚠️ 파일을 찾을 수 없습니다: {DEFAULT_FILE_PATH}")
 
-    if st.session_state.data["merged"] is not None:
-        st.dataframe(st.session_state.data["merged"].head())
 
 # [수정] Step 1: 시각화 (기존 Step 2)
 elif st.session_state.step == 1:
