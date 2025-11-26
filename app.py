@@ -52,21 +52,6 @@ for i, step_name in enumerate(steps):
     if st.sidebar.button(step_name, key=f"btn_{i}"):
         st.session_state.step = i
 
-# 핵심 설정（작업 유형 + 혼합 가중치）
-st.sidebar.divider()
-st.sidebar.subheader("핵심 설정")
-st.session_state.task = st.sidebar.radio("작업 유형", options=["logit", "의사결정나무"], index=0)
-
-# 단계 인덱스가 조정되었으므로 (학습 단계는 이제 3번), 조건도 3으로 변경
-if st.session_state.step >= 3:  
-    st.sidebar.subheader("하이브리드모형 가중치")
-    reg_weight = st.sidebar.slider(
-        "회귀 분석 가중치（해석력 강함）",
-        min_value=0.0, max_value=1.0, value=st.session_state.models["mixed_weights"]["regression"], step=0.1
-    )
-    st.session_state.models["mixed_weights"]["regression"] = reg_weight
-    st.session_state.models["mixed_weights"]["decision_tree"] = 1 - reg_weight
-    st.sidebar.text(f"의사결정나무 가중치（정확도 높음）：{1 - reg_weight:.1f}")
 
 # ----------------------
 # 3. 메인 페이지：단계별 내용 표시
