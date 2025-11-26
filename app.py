@@ -372,18 +372,6 @@ elif st.session_state.step == 2:
                 else:
                     st.info("👈 위 버튼을 눌러 전처리를 시작하세요.")
 
-
-# ==============================================================================
-#  필요 라이브러리 임포트 (코드 실행에 필수)
-# ==============================================================================
-import streamlit as st
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression, LinearRegression
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
-from sklearn.exceptions import NotFittedError
-
 # ==============================================================================
 #  단계 3：모델 학습 (데이터 분할을 맨 위로, 모델 설정을 그 아래로 배치)
 # ==============================================================================
