@@ -56,19 +56,7 @@ for i, step_name in enumerate(steps):
     if st.sidebar.button(step_name, key=f"btn_{i}"):
         st.session_state.step = i
 
-st.sidebar.divider()
-st.sidebar.subheader("핵심 설정")
-st.session_state.task = st.sidebar.radio("작업 유형", options=["logit", "의사결정나무"], index=0)
 
-if st.session_state.step >= 3: # 단계 인덱스가 변경되어 조건도 수정 (학습 단계 이후)
-    st.sidebar.subheader("하이브리드 가중치")
-    reg_weight = st.sidebar.slider(
-        "회귀 모델 가중치", 0.0, 1.0, 
-        value=st.session_state.models["mixed_weights"]["regression"], step=0.1
-    )
-    st.session_state.models["mixed_weights"]["regression"] = reg_weight
-    st.session_state.models["mixed_weights"]["decision_tree"] = 1 - reg_weight
-    st.sidebar.text(f"트리 모델 가중치: {1 - reg_weight:.1f}")
 
 # ----------------------
 # 3. 메인 페이지 로직
