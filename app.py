@@ -97,7 +97,7 @@ if st.session_state.step == 0:
                 st.error(f"에러: {e}")
 
   with tab2:
-        DEFAULT_FILE_PATH = "combined_loan_data.csv" 
+        DEFAULT_FILE_PATH = "LC_clean.csv" 
         st.info(f"💡 **기본 데이터 설명**: 대출 관련 통합 데이터 (`{DEFAULT_FILE_PATH}`)")
         
         if st.button("기본 데이터 불러오기", type="primary"):
