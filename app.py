@@ -52,21 +52,6 @@ for i, step_name in enumerate(steps):
     if st.sidebar.button(step_name, key=f"btn_{i}"):
         st.session_state.step = i
 
-# 핵심 설정（작업 유형 + 혼합 가중치）
-st.sidebar.divider()
-st.sidebar.subheader("핵심 설정")
-st.session_state.task = st.sidebar.radio("작업 유형", options=["logit", "의사결정나무"], index=0)
-
-# 단계 인덱스가 조정되었으므로 (학습 단계는 이제 3번), 조건도 3으로 변경
-if st.session_state.step >= 3:  
-    st.sidebar.subheader("하이브리드모형 가중치")
-    reg_weight = st.sidebar.slider(
-        "회귀 분석 가중치（해석력 강함）",
-        min_value=0.0, max_value=1.0, value=st.session_state.models["mixed_weights"]["regression"], step=0.1
-    )
-    st.session_state.models["mixed_weights"]["regression"] = reg_weight
-    st.session_state.models["mixed_weights"]["decision_tree"] = 1 - reg_weight
-    st.sidebar.text(f"의사결정나무 가중치（정확도 높음）：{1 - reg_weight:.1f}")
 
 # ----------------------
 # 3. 메인 페이지：단계별 내용 표시
@@ -396,121 +381,135 @@ elif st.session_state.step == 2:
                 else:
                     st.info("👈 먼저 [전처리 실행] 버튼을 눌러주세요.")
                     
-# ----------------------
-#  단계 3：모델 학습 (기존 단계 4에서 이동)
-# ----------------------
+# ==============================================================================
+#  단계 3：모델 학습 (핵심 수정 부분)
+# ==============================================================================
 elif st.session_state.step == 3:
-    st.subheader("🚀 하이브리드모형 학습")
+    st.subheader("🚀 모델 학습 설정")
     
-    if "X_processed" not in st.session_state.data or st.session_state.data["X_processed"] is None:
-        st.warning("⚠️ 먼저「데이터 전처리」단계를 완료하세요")
+    if "X_processed" not in st.session_state.data:
+        st.warning("⚠️ 먼저 [데이터 전처리] 단계를 완료하세요.")
     else:
-        X = st.session_state.data["X_processed"]
-        y = st.session_state.data["y_processed"]
+        # -------------------------------------------------------------
+        # 1. 분석 유형 선택 (분류 vs 회귀)
+        # -------------------------------------------------------------
+        st.markdown("#### 1️⃣ 분석 유형 선택")
+        task_option = st.radio(
+            "데이터의 타겟(Y) 특성에 맞는 유형을 선택하세요:",
+            ["분류 (Classification) - 예: 합격/불합격, 0/1", 
+             "회귀 (Regression) - 예: 가격, 점수, 수치 예측"],
+            horizontal=True
+        )
         
-        st.markdown("### 1. 학습 설정 확인")
-        
-        # [자동 진단] 작업 유형(Task)과 데이터(Target)가 맞는지 검사
-        is_target_numeric = pd.api.types.is_numeric_dtype(y)
-        target_unique_count = y.nunique()
-        
-        #  진단 1: 타겟이 1개밖에 없을 때 (학습 불가)
-        if target_unique_count < 2:
-            st.error(f"❌ 타겟 변수(Y)의 값 종류가 1개({y.unique()[0]})뿐입니다. 모델을 학습할 수 없습니다.")
-            st.stop()
-            
-        #  진단 2: 분류(Logit)인데 타겟이 연속형 숫자일 때 (설정 실수 가능성 높음)
-        if st.session_state.task == "logit" and is_target_numeric and target_unique_count > 20:
-            st.warning(f"⚠️ **주의 감지**: 타겟 변수가 '연속된 숫자({target_unique_count}개 종류)'로 보입니다.")
-            st.info("💡 혹시 **매출, 가격, 점수** 등을 예측하시나요? 그렇다면 왼쪽 사이드바의 **[핵심 설정]**에서 **'의사결정나무(회귀)'**를 선택해주세요.")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            test_size = st.slider("테스트 데이터 비율 (Test Size)", 0.1, 0.4, 0.2, 0.05)
-        with col2:
-            st.info(f"현재 분석 모드: **{st.session_state.task}**")
-
-        # -------------------------------------------------------
-        # Stratify(층화 추출) 로직 개선
-        # -------------------------------------------------------
-        stratify_param = None
-        
-        if st.session_state.task == "logit":
-            #  각 클래스별 데이터가 최소 2개 이상이어야 층화 추출 가능
-            class_counts = y.value_counts()
-            if (class_counts >= 2).all():
-                stratify_param = y
-                st.success(f"✅ 층화 추출(Stratified Split) 적용됨 (클래스 균형 유지)")
-            else:
-                #  어떤 클래스가 문제인지 알려줌
-                problem_classes = class_counts[class_counts < 2].index.tolist()
-                st.warning(f"⚠️ 층화 추출 미적용: 데이터가 1개뿐인 클래스가 있습니다. {problem_classes[:3]}...")
-                st.caption("데이터 부족으로 무작위 분할(Random Split)을 진행합니다.")
+        # task 상태 업데이트
+        if "분류" in task_option:
+            st.session_state.task = "logit"
         else:
-            st.caption("ℹ️ 회귀 분석(Regression)은 층화 추출을 사용하지 않습니다.")
-        
-        #  데이터 분할
-        try:
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=test_size, random_state=42, stratify=stratify_param
-            )
-        except ValueError as e:
-            #  층화 추출 실패 시 재시도 (fallback)
-            st.warning("⚠️ 층화 추출 실패로 단순 무작위 분할을 시도합니다.")
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=test_size, random_state=42, stratify=None
-            )
+            st.session_state.task = "tree" # 내부 로직상 tree/regression 구분을 위해 사용
 
         st.divider()
+
+        # -------------------------------------------------------------
+        # 2. 모델 전략 선택 (Decision Tree / Logic / Hybrid)
+        # -------------------------------------------------------------
+        st.markdown("#### 2️⃣ 사용할 모델 전략 선택")
         
-        # [수정] 가중치 설정 UI
-        st.markdown("### 2. 하이브리드 가중치 설정")
-        w_col1, w_col2 = st.columns(2)
-        with w_col1:
-            reg_weight = st.slider("회귀 모델(Linear/Logistic) 비중", 0.0, 1.0, 0.5)
-        with w_col2:
-            st.metric("트리 모델(Tree) 비중", f"{1.0 - reg_weight:.1f}")
-            
-        #  모델 정의 및 학습
-        if st.session_state.task == "logit":
-            #  로지스틱 회귀 (수렴 경고 방지를 위해 max_iter 증가)
-            reg_model = LogisticRegression(max_iter=2000) 
-            dt_model = DecisionTreeClassifier(random_state=42, max_depth=10)
-        else:
-            reg_model = LinearRegression()
-            dt_model = DecisionTreeRegressor(random_state=42, max_depth=10)
-            
-        if st.button("🚀 모델 학습 시작", type="primary"):
-            with st.spinner("모델 학습 중입니다..."):
+        # 3가지 옵션을 탭으로 구현
+        model_tabs = st.tabs(["🌲 Decision Tree (의사결정나무)", "📈 Logic (로지스틱/선형회귀)", "⚖️ Hybrid (하이브리드 모형)"])
+        
+        selected_strategy = None
+        current_reg_weight = 0.5 # 초기값
+
+        with model_tabs[0]:
+            st.caption("의사결정나무 모델만 사용하여 예측합니다. (해석 용이, 비선형 관계 파악)")
+            if st.checkbox("Decision Tree 선택", key="sel_dt"):
+                selected_strategy = "dt"
+                current_reg_weight = 0.0 # 회귀 비중 0 -> 트리 100%
+
+        with model_tabs[1]:
+            st.caption("로지스틱(분류) 또는 선형(회귀) 모델만 사용하여 예측합니다. (변수 영향력 파악 용이)")
+            if st.checkbox("Logic(회귀/로지스틱) 선택", key="sel_reg"):
+                selected_strategy = "reg"
+                current_reg_weight = 1.0 # 회귀 비중 100%
+
+        with model_tabs[2]:
+            st.caption("두 모델을 결합하여 예측 성능을 극대화합니다.")
+            if st.checkbox("Hybrid 모형 선택", value=True, key="sel_hybrid"): # 기본값
+                selected_strategy = "hybrid"
+                st.markdown("---")
+                st.write("**Hybrid 가중치 설정**")
+                current_reg_weight = st.slider(
+                    "Logic(회귀) 모델 반영 비율", 
+                    min_value=0.0, max_value=1.0, value=0.5, step=0.1,
+                    help="값이 높을수록 로지스틱/선형회귀의 영향력이 커집니다."
+                )
+                st.write(f"👉 **Logic: {current_reg_weight * 100:.0f}%** +  **Tree: {(1-current_reg_weight) * 100:.0f}%**")
+
+        st.divider()
+
+        # -------------------------------------------------------------
+        # 3. 데이터 분할 및 학습 실행
+        # -------------------------------------------------------------
+        st.markdown("#### 3️⃣ 학습 실행")
+        test_size = st.slider("테스트 데이터 비율", 0.1, 0.4, 0.2)
+        
+        if st.button("🏁 모델 학습 시작", type="primary"):
+            with st.spinner("모델을 학습 중입니다..."):
                 try:
-                    #  학습 수행
+                    X = st.session_state.data["X_processed"]
+                    y = st.session_state.data["y_processed"]
+                    
+                    # 데이터 분할
+                    stratify_opt = y if st.session_state.task == "logit" and y.nunique() > 1 else None
+                    X_train, X_test, y_train, y_test = train_test_split(
+                        X, y, test_size=test_size, random_state=42, stratify=stratify_opt
+                    )
+                    
+                    # 모델 초기화
+                    if st.session_state.task == "logit":
+                        reg_model = LogisticRegression(max_iter=1000)
+                        dt_model = DecisionTreeClassifier(max_depth=5, random_state=42)
+                    else:
+                        reg_model = LinearRegression()
+                        dt_model = DecisionTreeRegressor(max_depth=5, random_state=42)
+                    
+                    # 학습 수행 (항상 둘 다 학습해두고, 예측 시 가중치로 조절하는 방식이 안전함)
                     reg_model.fit(X_train, y_train)
                     dt_model.fit(X_train, y_train)
                     
-                    #  모델 및 결과 저장
+                    # 결과 저장
                     st.session_state.models["regression"] = reg_model
                     st.session_state.models["decision_tree"] = dt_model
+                    
+                    # [핵심] 선택한 전략에 따라 가중치 저장
+                    # Decision Tree 탭 선택 -> reg=0
+                    # Logic 탭 선택 -> reg=1
+                    # Hybrid 탭 선택 -> reg=slider값
+                    
+                    # UI의 Checkbox 로직이 배타적이지 않을 수 있어, 마지막 선택 기준으로 우선순위 정리
+                    # (실제 앱에서는 st.radio를 쓰는게 더 깔끔하지만, 탭 안에 넣기 위해 로직 처리)
+                    final_reg_weight = 0.5 # Default Hybrid
+                    
+                    if selected_strategy == "dt":
+                        final_reg_weight = 0.0
+                        st.info("ℹ️ **Decision Tree 단일 모델**로 설정되었습니다.")
+                    elif selected_strategy == "reg":
+                        final_reg_weight = 1.0
+                        st.info("ℹ️ **Logic (회귀/로지스틱) 단일 모델**로 설정되었습니다.")
+                    elif selected_strategy == "hybrid":
+                        final_reg_weight = current_reg_weight
+                        st.info(f"ℹ️ **Hybrid 모델 (Logic {final_reg_weight:.1f} : Tree {1-final_reg_weight:.1f})**로 설정되었습니다.")
+                    
                     st.session_state.models["mixed_weights"] = {
-                        "regression": reg_weight, "decision_tree": 1.0 - reg_weight
+                        "regression": final_reg_weight,
+                        "decision_tree": 1.0 - final_reg_weight
                     }
                     
-                    st.session_state.data.update({
-                        "X_train": X_train, "X_test": X_test, 
-                        "y_train": y_train, "y_test": y_test
-                    })
+                    st.session_state.data.update({"X_test": X_test, "y_test": y_test})
+                    st.success("✅ 학습 완료!")
                     
-                    st.success("✅ 모델 학습이 완료되었습니다!")
-                    
-                    #  결과 요약
-                    summ_col1, summ_col2 = st.columns(2)
-                    with summ_col1:
-                        st.markdown(f"**학습 데이터**: {len(X_train):,} 건")
-                    with summ_col2:
-                        st.markdown(f"**테스트 데이터**: {len(X_test):,} 건")
-                        
                 except Exception as e:
-                    st.error(f"❌ 학습 중 오류 발생: {str(e)}")
-                    st.warning("데이터의 타겟 변수(Y) 타입과 '작업 유형(분류/회귀)'이 맞는지 다시 확인해주세요.")
+                    st.error(f"학습 중 오류 발생: {e}")
 
 # ----------------------
 #  단계 4：모델 예측 (기존 단계 5에서 이동)
