@@ -231,8 +231,10 @@ elif st.session_state.step == 2:
         
         col1, col2 = st.columns(2)
         with col1:
+            # 타겟 변수 선택
             target_col = st.selectbox("🎯 타겟 변수 (Y)", options=all_cols)
         
+        # [핵심 수정] 타겟 변수로 선택된 컬럼은 입력 변수 후보에서 제외
         feature_candidates = [c for c in all_cols if c != target_col]
         
         with col2:
@@ -251,7 +253,7 @@ elif st.session_state.step == 2:
             # 설정 저장
             st.session_state.preprocess["target_col"] = target_col
             
-            # [수정된 부분] 리스트 언패킹([...])을 사용하여 탭 객체를 추출해야 합니다.
+            # [수정된 부분] 탭 객체 추출 방식 (리스트 언패킹)
             [tab1] = st.tabs(["⚡ 전처리 실행"])
             
             with tab1:
@@ -260,6 +262,11 @@ elif st.session_state.step == 2:
                 if st.button("🚀 전처리 및 정제 시작", type="primary"):
                     with st.spinner("데이터 정제 중..."):
                         try:
+                            # [안전 장치 추가] 입력 변수(X)에 타겟 변수(Y)가 포함되어 있다면 강제 제거
+                            if target_col in selected_features:
+                                selected_features.remove(target_col)
+                                st.warning(f"⚠️ 타겟 변수 '{target_col}'가 입력 변수에 포함되어 있어 자동으로 제외했습니다.")
+
                             # [핵심 1] 타겟(Y)이 비어있는 행 제거
                             clean_df = df_origin.dropna(subset=[target_col]).reset_index(drop=True)
                             
@@ -267,7 +274,7 @@ elif st.session_state.step == 2:
                             if dropped_count > 0:
                                 st.warning(f"⚠️ 타겟 변수({target_col})값이 비어있는 {dropped_count}개 행을 제거했습니다.")
                             
-                            # X, y 분리
+                            # X, y 분리 (필터링된 selected_features 사용)
                             X = clean_df[selected_features].copy()
                             y = clean_df[target_col].copy()
                             
@@ -343,7 +350,6 @@ elif st.session_state.step == 2:
                         except Exception as e:
                             st.error(f"❌ 오류 발생: {str(e)}")
                 else:
-                    # 버튼을 누르지 않았을 때 보이는 메시지
                     st.info("👈 위 버튼을 눌러 전처리를 시작하세요.")
 
 # ==============================================================================
