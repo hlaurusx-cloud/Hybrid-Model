@@ -230,19 +230,30 @@ elif st.session_state.step == 2:
         st.markdown("### 1️⃣ 분석 변수 설정")
         
         col1, col2 = st.columns(2)
-        with col1:
-            # 타겟 변수 선택
-            target_col = st.selectbox("🎯 타겟 변수 (Y)", options=all_cols)
         
-        # [수정됨] 타겟 변수로 선택된 컬럼은 입력 변수 후보에서 즉시 제외
+        # ---------------------------------------------------------
+        # [핵심 1] 타겟 변수(Y) 정의
+        # ---------------------------------------------------------
+        with col1:
+            target_col = st.selectbox(
+                "🎯 타겟 변수 (Y) 선택", 
+                options=all_cols,
+                help="예측하고자 하는 목표 변수입니다."
+            )
+            
+        # ---------------------------------------------------------
+        # [핵심 2] 타겟 변수 정의에 따른 입력 변수(X) 후보 목록 구성
+        # 타겟 변수와 입력 변수가 겹치지 않도록 리스트에서 제외합니다.
+        # ---------------------------------------------------------
         feature_candidates = [c for c in all_cols if c != target_col]
         
         with col2:
             default_feats = feature_candidates[:10] if len(feature_candidates) > 10 else feature_candidates
             selected_features = st.multiselect(
-                "📋 입력 변수 (X)",
-                options=feature_candidates,
-                default=default_feats
+                "📋 입력 변수 (X) 선택",
+                options=feature_candidates, # 타겟이 제외된 리스트 사용
+                default=default_feats,
+                help="타겟 변수를 예측하기 위해 사용할 데이터입니다."
             )
         
         st.divider()
@@ -253,12 +264,9 @@ elif st.session_state.step == 2:
             # 설정 저장
             st.session_state.preprocess["target_col"] = target_col
             
-            # ------------------------------------------------------------------
-            # [수정 핵심] st.tabs 에러 방지를 위한 안전한 코드
-            # st.tabs는 항상 리스트를 반환합니다. 변수 하나에 리스트 전체를 받습니다.
-            # ------------------------------------------------------------------
+            # 탭 생성 (리스트 인덱싱으로 안전하게 접근)
             tabs = st.tabs(["⚡ 전처리 실행"])
-            tab1 = tabs[0]  # 리스트의 첫 번째 탭을 가져옴
+            tab1 = tabs[0]
             
             with tab1:
                 st.write(f"**Y(타겟) 결측치 제거** 및 **X(입력) 결측치 채우기**를 수행합니다.")
@@ -266,34 +274,49 @@ elif st.session_state.step == 2:
                 if st.button("🚀 전처리 및 정제 시작", type="primary"):
                     with st.spinner("데이터 정제 중..."):
                         try:
-                            # [안전 장치] 입력 변수(X)에 타겟 변수(Y)가 포함되어 있다면 강제 제거
+                            # -----------------------------------------------------
+                            # [안전 장치] 혹시라도 입력 변수에 타겟이 포함되어 있는지 재확인
+                            # -----------------------------------------------------
                             if target_col in selected_features:
                                 selected_features.remove(target_col)
-                                st.warning(f"⚠️ 타겟 변수 '{target_col}'가 입력 변수에 포함되어 있어 자동으로 제외했습니다.")
+                                st.warning(f"⚠️ 입력 변수 목록에서 타겟 변수 '{target_col}'를 자동으로 제외했습니다.")
 
-                            # [핵심 1] 타겟(Y)이 비어있는 행 제거
+                            # 1. 타겟(Y) 결측치 처리 (타겟이 없으면 학습 불가하므로 제거)
                             clean_df = df_origin.dropna(subset=[target_col]).reset_index(drop=True)
                             
                             dropped_count = len(df_origin) - len(clean_df)
                             if dropped_count > 0:
-                                st.warning(f"⚠️ 타겟 변수({target_col})값이 비어있는 {dropped_count}개 행을 제거했습니다.")
+                                st.warning(f"⚠️ 타겟 변수({target_col})가 비어있는 {dropped_count}개 행을 제거했습니다.")
                             
-                            # X, y 분리
+                            # 데이터 분리
                             X = clean_df[selected_features].copy()
                             y = clean_df[target_col].copy()
                             
-                            # [핵심 2] 타겟(Y) 데이터 인코딩
+                            # -----------------------------------------------------
+                            # [핵심 3] 타겟 변수(Y)의 타입에 따른 인코딩 처리
+                            # 분류 문제인데 타겟이 문자열이면 LabelEncoding 수행
+                            # -----------------------------------------------------
                             le_target = None
-                            if st.session_state.task == "logit" and y.dtype == 'object':
-                                le_target = LabelEncoder()
-                                y = pd.Series(le_target.fit_transform(y), index=y.index)
-                                st.info("ℹ️ 타겟 변수가 문자열이라 자동으로 숫자로 변환(Encoding)되었습니다.")
                             
-                            # X 데이터 전처리 시작
+                            # 로직: Task가 분류(logit)이거나, 데이터 타입이 객체(문자)인 경우
+                            if y.dtype == 'object' or y.dtype.name == 'category':
+                                try:
+                                    le_target = LabelEncoder()
+                                    y = pd.Series(le_target.fit_transform(y), index=y.index)
+                                    st.info(f"ℹ️ 타겟 변수 '{target_col}'가 문자열 형식이어서 숫자로 변환(Label Encoding)했습니다.")
+                                    # 인코딩 클래스 정보 표시 (예: 0=Fail, 1=Pass)
+                                    mapping_info = {i: label for i, label in enumerate(le_target.classes_)}
+                                    st.caption(f"└ 변환 정보: {mapping_info}")
+                                except Exception as e:
+                                    st.warning(f"타겟 변수 인코딩 중 이슈 발생: {e}")
+
+                            # -----------------------------------------------------
+                            # 입력 변수(X) 전처리 시작
+                            # -----------------------------------------------------
                             num_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
                             cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
                             
-                            # 1. 값이 없는(All-NaN) 수치형 컬럼 제외
+                            # 1. 값이 하나도 없는 컬럼 제외
                             valid_num_cols = [c for c in num_cols if X[c].notna().sum() > 0]
                             num_cols = valid_num_cols 
 
@@ -302,13 +325,13 @@ elif st.session_state.step == 2:
                             scaler = StandardScaler()
                             encoders = {}
 
-                            # 2. 수치형 처리
+                            # 2. 수치형 변수 처리 (결측치 평균 대치 -> 스케일링)
                             if num_cols:
                                 X_imputed = imputer.fit_transform(X[num_cols])
                                 X_scaled = scaler.fit_transform(X_imputed)
                                 X[num_cols] = pd.DataFrame(X_scaled, columns=num_cols, index=X.index)
                             
-                            # 3. 범주형 처리
+                            # 3. 범주형 변수 처리 (결측치 'Unknown' -> Label Encoding)
                             for col in cat_cols:
                                 X[col] = X[col].fillna("Unknown").astype(str)
                                 le = LabelEncoder()
@@ -316,46 +339,37 @@ elif st.session_state.step == 2:
                                 X[col] = pd.Series(trans, index=X.index)
                                 encoders[col] = le
                             
-                            # 최종 컬럼 정리
+                            # 최종 데이터 병합 및 정리
                             final_features = num_cols + cat_cols
                             X = X[final_features]
+                            X = X.replace([np.inf, -np.inf], np.nan) # 무한대 처리
                             
-                            # 무한대 값 처리
-                            X = X.replace([np.inf, -np.inf], np.nan)
-                            
-                            # 잔여 결측치 확인
-                            nan_counts = X.isna().sum()
-                            total_nans = nan_counts.sum()
-                            if total_nans > 0:
-                                st.info(f"ℹ️ 입력 변수에 {total_nans}개의 결측치가 발견되어 처리됩니다.")
-                            
-                            # 최종 검사
+                            # 잔여 결측치 확인 (있으면 0으로 채움)
                             if X.isna().sum().sum() > 0:
-                                st.warning("⚠️ 일부 결측치 처리에 실패했습니다. 추가 정제가 필요합니다.")
+                                st.info("ℹ️ 처리되지 않은 잔여 결측치를 0으로 대치합니다.")
+                                X = X.fillna(0)
                             
-                            # 전역 상태 저장
+                            # -----------------------------------------------------
+                            # 전역 상태(Session State)에 저장
+                            # -----------------------------------------------------
                             st.session_state.preprocess.update({
                                 "feature_cols": final_features,
                                 "imputer": imputer if num_cols else None,
                                 "scaler": scaler if num_cols else None,
                                 "encoders": encoders,
-                                "num_cols": num_cols,
-                                "cat_cols": cat_cols,
                                 "target_encoder": le_target
                             })
                             
-                            # 처리된 데이터 저장
                             st.session_state.data["X_processed"] = X
                             st.session_state.data["y_processed"] = y
                             
-                            st.success(f"✅ 전처리 완료! (데이터 수: {len(X)}행)")
+                            st.success(f"✅ 전처리 완료! (입력 변수: {len(final_features)}개, 데이터: {len(X)}행)")
                             st.dataframe(X.head(), width='stretch')
                             
                         except Exception as e:
-                            st.error(f"❌ 오류 발생: {str(e)}")
+                            st.error(f"❌ 전처리 중 오류 발생: {str(e)}")
                 else:
                     st.info("👈 위 버튼을 눌러 전처리를 시작하세요.")
-
 # ==============================================================================
 #  단계 3：모델 학습 (3개 모델 독립 분석 및 결과 확인)
 # ==============================================================================
