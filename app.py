@@ -373,7 +373,7 @@ elif st.session_state.step == 2:
                     st.info("👈 위 버튼을 눌러 전처리를 시작하세요.")
 
 # ==============================================================================
-#  단계 3：모델 학습 (데이터 분할 설정을 각 모델 파라미터 아래에 배치)
+#  단계 3：모델 학습 (모델 설정 아래에 데이터 분할 배치)
 # ==============================================================================
 elif st.session_state.step == 3:
     st.subheader("🚀 모델 학습 설정")
@@ -381,7 +381,6 @@ elif st.session_state.step == 3:
     if "X_processed" not in st.session_state.data:
         st.warning("⚠️ 먼저 [데이터 전처리] 단계를 완료하세요.")
     else:
-
         # -------------------------------------------------------------
         # 1. 분석 유형 선택
         # -------------------------------------------------------------
@@ -393,48 +392,59 @@ elif st.session_state.step == 3:
             horizontal=True
         )
         st.session_state.task = "logit" if "분류" in task_option else "tree"
-
+        
         st.divider()
 
         # -------------------------------------------------------------
-        # 2. 모델 설정 + 데이터 분할 (각 모델 섹션 안에 배치)
+        # 2️⃣ Logic / Tree / Hybrid 모델 설정
         # -------------------------------------------------------------
         st.markdown("### 2️⃣ 모델 상세 설정 및 데이터 분할")
-
+        
         col1, col2, col3 = st.columns(3)
 
-        # ================================
-        # 🔹 Logic 모델 (로지스틱/선형회귀)
-        # ================================
+        # -------------------------------------------------------------
+        # 🔹 Logic 모델
+        # -------------------------------------------------------------
         with col1:
             st.markdown("#### 🔹 Logic 모델")
+            st.caption("데이터 분할 비율 설정")
 
-            st.caption("선형/로지스틱 회귀를 위한 데이터 분할 설정")
             test_size_logic = st.slider(
-                "Logic 모델 Test 비율", 0.1, 0.4, 0.2, key="logic_test_size"
+                "Logic Test 비율",
+                0.1, 0.4, 0.2,
+                key="logic_test_size"
             )
 
-        # ================================
-        # 🌳 Tree 모델 (의사결정나무)
-        # ================================
+        # -------------------------------------------------------------
+        # 🌳 Tree 모델
+        # -------------------------------------------------------------
         with col2:
             st.markdown("#### 🌳 Tree 모델")
+            st.caption("트리 깊이 + 데이터 분할 설정")
 
-            st.caption("의사결정나무를 위한 데이터 분할 설정")
+            # 기존 모델 파라미터 유지
+            tree_depth = st.slider("최대 깊이 (Max Depth)", 1, 20, 5, key="tree_depth")
+
+            # 데이터 분할 이동
             test_size_tree = st.slider(
-                "Tree 모델 Test 비율", 0.1, 0.4, 0.2, key="tree_test_size"
+                "Tree Test 비율",
+                0.1, 0.4, 0.2,
+                key="tree_test_size"
             )
 
-        # ================================
-        # ⚖️ Hybrid 모델 (결합 모델)
-        # ================================
+        # -------------------------------------------------------------
+        # ⚖️ Hybrid 모델 (그대로 유지)
+        # -------------------------------------------------------------
         with col3:
             st.markdown("#### ⚖️ Hybrid 모델")
+            st.caption("Logic + Tree 결합")
 
-            st.caption("결합 모델을 위한 데이터 분할 설정")
-            test_size_hybrid = st.slider(
-                "Hybrid 모델 Test 비율", 0.1, 0.4, 0.2, key="hybrid_test_size"
+            reg_weight = st.slider(
+                "Logic 가중치",
+                0.0, 1.0, 0.5, 0.1,
+                key="reg_weight"
             )
+            st.caption(f"Logic {int(reg_weight*100)}% + Tree {int((1-reg_weight)*100)}%")
 
         st.divider()
 
@@ -442,51 +452,65 @@ elif st.session_state.step == 3:
         # 3. 학습 시작 버튼
         # -------------------------------------------------------------
         if st.button("🏁 모델 학습 시작", type="primary"):
-            with st.spinner("3가지 모델을 모두 학습 중입니다..."):
+            with st.spinner("3가지 모델을 학습 중입니다..."):
                 try:
                     X = st.session_state.data["X_processed"]
                     y = st.session_state.data["y_processed"]
 
-                    # 분석 유형 따라 stratify 적용
                     stratify_opt = y if st.session_state.task == "logit" and y.nunique() > 1 else None
 
-                    # 각 모델마다 독립적으로 데이터 분할
+                    # ------------------------------
+                    # Logic 모델 데이터 분할
+                    # ------------------------------
                     X_train_logic, X_test_logic, y_train_logic, y_test_logic = train_test_split(
                         X, y, test_size=test_size_logic, random_state=42, stratify=stratify_opt
                     )
+
+                    # ------------------------------
+                    # Tree 모델 데이터 분할
+                    # ------------------------------
                     X_train_tree, X_test_tree, y_train_tree, y_test_tree = train_test_split(
                         X, y, test_size=test_size_tree, random_state=42, stratify=stratify_opt
                     )
+
+                    # ------------------------------
+                    # Hybrid 모델 (기존 방식 유지)
+                    # ------------------------------
                     X_train_hybrid, X_test_hybrid, y_train_hybrid, y_test_hybrid = train_test_split(
-                        X, y, test_size=test_size_hybrid, random_state=42, stratify=stratify_opt
+                        X, y, test_size=0.2, random_state=42, stratify=stratify_opt
                     )
 
                     # 모델 초기화
                     if st.session_state.task == "logit":
                         reg_model = LogisticRegression(max_iter=1000)
-                        dt_model = DecisionTreeClassifier(max_depth=5, random_state=42)
+                        dt_model = DecisionTreeClassifier(max_depth=tree_depth, random_state=42)
                     else:
                         reg_model = LinearRegression()
-                        dt_model = DecisionTreeRegressor(max_depth=5, random_state=42)
+                        dt_model = DecisionTreeRegressor(max_depth=tree_depth, random_state=42)
 
-                    # 학습 수행
+                    # 학습
                     reg_model.fit(X_train_logic, y_train_logic)
                     dt_model.fit(X_train_tree, y_train_tree)
 
-                    # 결과 저장
+                    # 저장
                     st.session_state.models["regression"] = reg_model
                     st.session_state.models["decision_tree"] = dt_model
+                    st.session_state.models["mixed_weights"] = {
+                        "regression": reg_weight,
+                        "decision_tree": 1.0 - reg_weight
+                    }
+
                     st.session_state.data.update({
                         "X_test_logic": X_test_logic, "y_test_logic": y_test_logic,
                         "X_test_tree": X_test_tree, "y_test_tree": y_test_tree,
                         "X_test_hybrid": X_test_hybrid, "y_test_hybrid": y_test_hybrid
                     })
 
-                    st.success("✅ 모든 모델의 학습이 완료되었습니다!")
-                    st.info("👉 **'성능 평가' 단계에서 모델을 비교하세요.**")
+                    st.success("✅ 모든 모델 학습 완료!")
+                    st.info("👉 성능 평가 단계로 이동하세요.")
 
                 except Exception as e:
-                    st.error(f"학습 중 오류 발생: {e}")
+                    st.error(f"오류 발생: {e}")
 
                             
 # ==============================================================================
