@@ -447,15 +447,15 @@ elif st.session_state.step == 3:
                     st.session_state.data.update({"X_test": X_test, "y_test": y_test})
 
                     # ---------------------------------------------------------
-                    # [추가된 기능] 학습 데이터에 대한 3개 모델 분석 결과 즉시 출력
+                    # [핵심] 3개 모델 결과 확실하게 출력 (세로 배치로 변경하여 가독성 확보)
                     # ---------------------------------------------------------
                     st.success("✅ 학습 완료! 각 모델이 데이터를 어떻게 분석했는지 확인하세요.")
                     st.divider()
                     st.markdown("### 📊 학습 데이터(Training Data) 분석 리포트")
                     
-                    # 학습 데이터에 대한 예측 및 점수 계산
+                    # 점수 계산
                     if st.session_state.task == "logit":
-                        # 분류 (Classification) - 정확도(Accuracy) 기준
+                        # 분류 (Classification)
                         p_train_reg = reg_model.predict_proba(X_train)[:, 1]
                         p_train_dt = dt_model.predict_proba(X_train)[:, 1]
                         p_train_hybrid = (p_train_reg * reg_weight) + (p_train_dt * (1 - reg_weight))
@@ -470,7 +470,7 @@ elif st.session_state.step == 3:
                         metric_name = "정확도(Accuracy)"
                         
                     else:
-                        # 회귀 (Regression) - R2 Score 기준
+                        # 회귀 (Regression)
                         pred_train_reg = reg_model.predict(X_train)
                         pred_train_dt = dt_model.predict(X_train)
                         pred_train_hybrid = (pred_train_reg * reg_weight) + (pred_train_dt * (1 - reg_weight))
@@ -480,26 +480,38 @@ elif st.session_state.step == 3:
                         s3 = r2_score(y_train, pred_train_hybrid)
                         metric_name = "설명력(R² Score)"
 
-                    # 결과 카드 출력
-                    m_col1, m_col2, m_col3 = st.columns(3)
-                    
-                    with m_col1:
-                        st.info("📈 Logic 분석 결과")
-                        st.metric(label=metric_name, value=f"{s1:.4f}")
-                        st.caption("선형적 관계를 중점적으로 분석함")
-                        
-                    with m_col2:
-                        st.success("🌲 Tree 분석 결과")
-                        st.metric(label=metric_name, value=f"{s2:.4f}")
-                        st.caption("규칙 및 비선형 패턴을 분석함")
-                        
-                    with m_col3:
-                        st.warning("⚖️ Hybrid 분석 결과")
-                        st.metric(label=metric_name, value=f"{s3:.4f}")
-                        st.caption(f"Logic {reg_weight*100:.0f}% + Tree {(1-reg_weight)*100:.0f}% 비율로 종합")
+                    # [수정됨] 결과를 명확히 보기 위해 st.container 또는 expander 사용 가능
+                    # 여기서는 확실하게 보이도록 각 결과를 박스로 감싸서 출력합니다.
 
                     st.markdown("---")
-                    st.write("👉 **다음 [성능 평가] 단계로 이동하여 테스트 데이터(Test Data)에 대한 검증 결과를 확인하세요.**")
+                    
+                    # 1. Logic 모델 결과
+                    with st.container():
+                        st.subheader("1️⃣ Logic (선형/로지스틱) 모델")
+                        cols = st.columns([1, 4])
+                        cols[0].metric(label=metric_name, value=f"{s1:.4f}")
+                        cols[1].info("데이터 간의 선형적 관계(비례/반비례)를 중심으로 학습했습니다.")
+                    
+                    st.markdown("---")
+
+                    # 2. Tree 모델 결과
+                    with st.container():
+                        st.subheader("2️⃣ Tree (의사결정나무) 모델")
+                        cols = st.columns([1, 4])
+                        cols[0].metric(label=metric_name, value=f"{s2:.4f}")
+                        cols[1].success("데이터의 규칙과 비선형적 패턴을 중심으로 학습했습니다.")
+
+                    st.markdown("---")
+
+                    # 3. Hybrid 모델 결과
+                    with st.container():
+                        st.subheader("3️⃣ Hybrid (하이브리드) 모델")
+                        cols = st.columns([1, 4])
+                        cols[0].metric(label=metric_name, value=f"{s3:.4f}")
+                        cols[1].warning(f"위 두 모델을 {reg_weight*100:.0f}% : {(1-reg_weight)*100:.0f}% 비율로 결합하여 최적의 해를 찾습니다.")
+
+                    st.markdown("---")
+                    st.write("👉 **모든 모델의 학습이 완료되었습니다. [성능 평가] 단계로 이동하세요.**")
                     
                 except Exception as e:
                     st.error(f"학습 및 분석 중 오류 발생: {e}")
