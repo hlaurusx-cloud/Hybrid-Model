@@ -522,7 +522,7 @@ elif st.session_state.step == 4:
     if st.session_state.models["regression"] is None:
         st.warning("⚠️ 먼저 [모델 학습] 단계를 완료하세요")
     else:
-        # ✅ 공통 비교용 테스트셋 (학습 단계에서 저장된 키를 사용)
+        # 🧪 학습 단계에서 저장했던 hybrid test dataset 사용 (공통 비교용)
         X_test = st.session_state.data.get("X_test_hybrid")
         y_test = st.session_state.data.get("y_test_hybrid")
 
@@ -530,29 +530,30 @@ elif st.session_state.step == 4:
             st.error("❌ 테스트 데이터가 없습니다. 먼저 [모델 학습] 단계를 다시 실행해 주세요.")
             st.stop()
 
+        # 모델 로드
         reg_model = st.session_state.models["regression"]
         dt_model = st.session_state.models["decision_tree"]
-        w = st.session_state.models["mixed_weights"]
+        w = st.session_state.models["mixed_weights"]  # 혼합 가중치
 
         # 예측 확률
         pred_reg = reg_model.predict_proba(X_test)[:, 1]
         pred_tree = dt_model.predict_proba(X_test)[:, 1]
-        pred_hybrid = w * pred_reg + (1 - w) * pred_tree
+        pred_hybrid = w * pred_reg + (1 - w) * pred_tree  # 하이브리드 결합 확률
 
-        # 임계값
-        threshold = st.slider("🎯 분류 임계값(Threshold)", 0.0, 1.0, 0.5, 0.01)
+        # Threshold slider (이진 분류 기준)
+        threshold = st.slider("🎯 분류 임계값 (Threshold)", 0.0, 1.0, 0.5, 0.01)
 
-        # 이진 예측
+        # 이진 예측값 계산
         y_pred_reg = (pred_reg >= threshold).astype(int)
         y_pred_tree = (pred_tree >= threshold).astype(int)
         y_pred_hybrid = (pred_hybrid >= threshold).astype(int)
 
         from sklearn.metrics import (
-            accuracy_score, precision_score, recall_score, f1_score,
-            roc_auc_score, roc_curve, confusion_matrix
+            accuracy_score, precision_score, recall_score,
+            f1_score, roc_auc_score, roc_curve, confusion_matrix
         )
 
-        # 성능 지표 계산
+        # 📊 모델별 성능 저장 + DataFrame으로 정리
         rows = []
         for name, yhat, prob in [
             ("Logistic Regression", y_pred_reg, pred_reg),
@@ -570,10 +571,11 @@ elif st.session_state.step == 4:
 
         import pandas as pd
         metrics_df = pd.DataFrame(rows)
+
         st.markdown("### 📊 모델별 주요 성능 지표")
         st.dataframe(metrics_df, use_container_width=True)
 
-        # ROC Curve 비교
+        # 📈 ROC Curve 비교 (plotly)
         st.markdown("### 📈 ROC Curve 비교")
         fpr_r, tpr_r, _ = roc_curve(y_test, pred_reg)
         fpr_t, tpr_t, _ = roc_curve(y_test, pred_tree)
@@ -592,7 +594,7 @@ elif st.session_state.step == 4:
         )
         st.plotly_chart(fig_roc, use_container_width=True)
 
-        # Confusion Matrix
+        # 🧩 Confusion Matrix 비교
         st.markdown("### 🧩 Confusion Matrix 비교")
         cm_reg = confusion_matrix(y_test, y_pred_reg)
         cm_tree = confusion_matrix(y_test, y_pred_tree)
@@ -616,6 +618,8 @@ elif st.session_state.step == 4:
             fig = px.imshow(cm_hybrid, text_auto=True, title="Confusion Matrix")
             st.plotly_chart(fig, use_container_width=True)
 
-        # 확률 분포/캘리브레이션 느낌의 산점도 (선택)
-        st.markdown("### 🔎 예측 확률 분포(참고)")
-        fig = px.scatter(x=y_test, y=pred_hybrid,
+        # 🔎 (선택) Hybrid 모델 예측 확률 분포 보기
+        st.markdown("### 🔎 예측 확률 분포 (Hybrid Model)")
+        fig = px.scatter(x=y_test, y=pred_hybrid, title="Hybrid: y_true vs predicted probability")
+        fig.update_layout(xaxis_title="y_true", yaxis_title="predicted probability")
+        st.plotly_chart(fig, use_container_width=True)
