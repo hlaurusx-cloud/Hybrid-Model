@@ -379,70 +379,131 @@ elif st.session_state.step == 2:
                     st.info("👈 위 버튼을 눌러 전처리를 시작하세요.")
 
 # ==============================================================================
-#  단계 3：모델 학습 (SMOTE + class_weight 반영)
+#  단계 3：🚀 모델 학습 (SMOTE + class_weight + 기존 3모델 유지)
 # ==============================================================================
 elif st.session_state.step == 3:
     st.subheader("🚀 모델 학습 설정")
-    
+
     if "X_processed" not in st.session_state.data:
         st.warning("⚠ 먼저 전처리 단계를 완료하세요.")
     else:
         X = st.session_state.data["X_processed"]
         y = st.session_state.data["y_processed"]
 
-        # -----------------------------
-        # 분석 유형 선택
-        # -----------------------------
-        task_option = st.radio("분석 유형 선택", ["분류 (Classification)", "회귀 (Regression)"])
+        # -------------------------------------------------------------
+        # 1️⃣ 분석 유형 선택
+        # -------------------------------------------------------------
+        task_option = st.radio(
+            "분석 유형을 선택하세요:",
+            ["분류 (Classification)", "회귀 (Regression)"],
+            horizontal=True
+        )
         is_classification = "분류" in task_option
 
         st.divider()
 
-        if st.button("🏁 Train/Test Split & 모델 학습 시작"):
+        # -------------------------------------------------------------
+        # 2️⃣ 모델 설정 & 데이터 분리 (로그/트리/하이브리드 모두 유지!)
+        # -------------------------------------------------------------
+        st.markdown("### 2️⃣ Logit / Tree / Hybrid 모델 설정")
+
+        col1, col2, col3 = st.columns(3)
+
+        # 🔹 Logit Model
+        with col1:
+            st.subheader("🔹 Logit")
+            test_size_logit = st.slider("📌 Test 비율", 0.1, 0.4, 0.2, key="logit_test")
+
+        # 🌳 Tree Model
+        with col2:
+            st.subheader("🌳 Tree")
+            tree_depth = st.slider("📌 트리 깊이 (max_depth)", 2, 20, 6)
+            test_size_tree = st.slider("📌 Test 비율", 0.1, 0.4, 0.2, key="tree_test")
+
+        # ⚖️ Hybrid Model
+        with col3:
+            st.subheader("⚖ Hybrid")
+            reg_weight = st.slider(
+                "Logit 가중치",
+                0.0, 1.0, 0.5, 0.1,
+                key="hybrid_weight"
+            )
+            st.caption(f"Logit {reg_weight*100:.0f}% + Tree {(1-reg_weight)*100:.0f}%")
+
+        st.divider()
+
+        # -------------------------------------------------------------
+        # 3️⃣ 모델 학습 시작 버튼
+        # -------------------------------------------------------------
+        if st.button("🏁 모델 학습 시작"):
             try:
-                # -----------------------------
-                # 데이터 분리
-                # -----------------------------
-                X_train, X_test, y_train, y_test = train_test_split(
-                    X, y, test_size=0.2, random_state=42,
-                    stratify=y if is_classification else None
+                stratify_opt = y if is_classification else None
+
+                # ------------------------------
+                # 📌 데이터 분리 (Logit / Tree / Hybrid 각각 수행)
+                # ------------------------------
+                X_train_logit, X_test_logit, y_train_logit, y_test_logit = train_test_split(
+                    X, y, test_size=test_size_logit, random_state=42, stratify=stratify_opt
+                )
+                X_train_tree, X_test_tree, y_train_tree, y_test_tree = train_test_split(
+                    X, y, test_size=test_size_tree, random_state=42, stratify=stratify_opt
+                )
+                X_train_hybrid, X_test_hybrid, y_train_hybrid, y_test_hybrid = train_test_split(
+                    X, y, test_size=0.2, random_state=42, stratify=stratify_opt
                 )
 
-                # -----------------------------
-                # 🚨 SMOTE (불균형 시)
-                # -----------------------------
-                if st.session_state.use_smote and is_classification:
-                    st.info("🔄 SMOTE 적용 중")
+                # -------------------------------------------------------------
+                # 🚨 클래스 불균형 자동 감지 + SMOTE 적용 (Classification만 수행)
+                # -------------------------------------------------------------
+                if is_classification and st.session_state.use_smote:
+                    st.info("🚨 클래스 불균형 감지 → SMOTE 적용 중...")
+
                     from imblearn.over_sampling import SMOTE
                     sm = SMOTE(random_state=42)
-                    X_train, y_train = sm.fit_resample(X_train, y_train)
-                    st.success("📈 SMOTE 적용 완료")
 
-                # -----------------------------
+                    X_train_logit, y_train_logit = sm.fit_resample(X_train_logit, y_train_logit)
+                    X_train_tree, y_train_tree = sm.fit_resample(X_train_tree, y_train_tree)
+                    X_train_hybrid, y_train_hybrid = sm.fit_resample(X_train_hybrid, y_train_hybrid)
+
+                    st.success("📈 SMOTE 적용 완료! (Train 데이터만)")
+
+                # -------------------------------------------------------------
                 # class_weight 설정
-                # -----------------------------
-                class_weight_opt = 'balanced' if st.session_state.use_smote else None
+                # -------------------------------------------------------------
+                class_weight_opt = 'balanced' if is_classification and st.session_state.use_smote else None
 
-                # -----------------------------
-                #  모델 선택 + 학습
-                # -----------------------------
+                # -------------------------------------------------------------
+                # 4️⃣ 모델 생성 (Logit / Tree / Hybrid 유지)
+                # -------------------------------------------------------------
                 if is_classification:
-                    model = LogisticRegression(max_iter=1000, class_weight=class_weight_opt)
+                    logit_model = LogisticRegression(max_iter=1000, class_weight=class_weight_opt)
+                    tree_model = DecisionTreeClassifier(max_depth=tree_depth, random_state=42, class_weight=class_weight_opt)
                 else:
-                    model = LinearRegression()
+                    logit_model = LinearRegression()
+                    tree_model = DecisionTreeRegressor(max_depth=tree_depth, random_state=42)
 
-                model.fit(X_train, y_train)
+                # -------------------------------------------------------------
+                # 5️⃣ 각 모델 학습 실행
+                # -------------------------------------------------------------
+                logit_model.fit(X_train_logit, y_train_logit)
+                tree_model.fit(X_train_tree, y_train_tree)
 
-                # -----------------------------
-                # 저장
-                # -----------------------------
-                st.session_state.data.update({
-                    "X_test": X_test,
-                    "y_test": y_test
+                # -------------------------------------------------------------
+                # 6️⃣ Hybrid 가중치 저장
+                # -------------------------------------------------------------
+                st.session_state.models.update({
+                    "logit_model": logit_model,
+                    "tree_model": tree_model,
+                    "hybrid_weight": reg_weight
                 })
-                st.session_state.models["main"] = model
 
-                st.success("🎯 모델 학습 완료 → 성능 평가 단계로 이동!")
+                st.session_state.data.update({
+                    "X_test_logit": X_test_logit, "y_test_logit": y_test_logit,
+                    "X_test_tree": X_test_tree, "y_test_tree": y_test_tree,
+                    "X_test_hybrid": X_test_hybrid, "y_test_hybrid": y_test_hybrid
+                })
+
+                st.success("🎯 모든 모델 학습 완료! → 성능 평가 단계로 이동하세요.")
 
             except Exception as e:
                 st.error(f"❌ 오류 발생: {e}")
