@@ -241,8 +241,9 @@ elif st.session_state.step == 2:
 
             target_col = st.selectbox(
                 "🎯 타겟 변수 (Y) 선택",
-                options=all_cols,
-                index=default_index
+                options = all_cols,
+                index = default_index,
+                help = " 예측하고자 하는 목표 변수입니다",
             )
 
         # -----------------------------
