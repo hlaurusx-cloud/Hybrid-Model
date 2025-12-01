@@ -516,110 +516,121 @@ elif st.session_state.step == 3:
 # ==============================================================================
 #  단계 4：성능 평가 (확장된 지표 및 혼동행렬 추가)
 # ==============================================================================
+
 elif st.session_state.step == 4:
     st.subheader("📈 모델 성능 심층 평가")
-
+    
     if st.session_state.models["regression"] is None:
         st.warning("⚠️ 먼저 [모델 학습] 단계를 완료하세요")
     else:
-        # 🧪 학습 단계에서 저장했던 hybrid test dataset 사용 (공통 비교용)
-        X_test = st.session_state.data.get("X_test_hybrid")
-        y_test = st.session_state.data.get("y_test_hybrid")
-
-        if X_test is None or y_test is None:
-            st.error("❌ 테스트 데이터가 없습니다. 먼저 [모델 학습] 단계를 다시 실행해 주세요.")
-            st.stop()
-
-        # 모델 로드
+        # 데이터 및 모델 로드
+        X_test = st.session_state.data["X_test"]
+        y_test = st.session_state.data["y_test"]
+        
         reg_model = st.session_state.models["regression"]
         dt_model = st.session_state.models["decision_tree"]
-        w = st.session_state.models["mixed_weights"]  # 혼합 가중치
+        w = st.session_state.models["mixed_weights"]
+        
+        st.info(f"ℹ️ Hybrid 가중치: Logit {w['regression']*100:.0f}% + Tree {w['decision_tree']*100:.0f}%")
+        
+        # ----------------------------------------------------------------------
+        # A. 분류 (Classification) 평가 로직 - [요청하신 기능 집중 구현]
+        # ----------------------------------------------------------------------
+        if st.session_state.task == "logit":
+            # 1. 확률 및 클래스 예측
+            # (1) Logic
+            prob_reg = reg_model.predict_proba(X_test)[:, 1]
+            pred_reg = reg_model.predict(X_test)
+            # (2) Tree
+            prob_dt = dt_model.predict_proba(X_test)[:, 1]
+            pred_dt = dt_model.predict(X_test)
+            # (3) Hybrid
+            prob_hybrid = (prob_reg * w["regression"]) + (prob_dt * w["decision_tree"])
+            pred_hybrid = (prob_hybrid >= 0.5).astype(int)
+            
+            # 2. 성능 지표 계산 함수 (Accuracy, Precision, Recall, F1)
+            def get_cls_detailed_metrics(y_true, y_pred, y_prob):
+                return {
+                    "Accuracy": accuracy_score(y_true, y_pred),
+                    "Precision": precision_score(y_true, y_pred, zero_division=0),
+                    "Recall": recall_score(y_true, y_pred, zero_division=0),
+                    "F1-Score": f1_score(y_true, y_pred, zero_division=0),
+                    "AUC": auc(*roc_curve(y_true, y_prob)[:2])
+                }
 
-        # 예측 확률
-        pred_reg = reg_model.predict_proba(X_test)[:, 1]
-        pred_tree = dt_model.predict_proba(X_test)[:, 1]
-        pred_hybrid = w * pred_reg + (1 - w) * pred_tree  # 하이브리드 결합 확률
+            metrics_reg = get_cls_detailed_metrics(y_test, pred_reg, prob_reg)
+            metrics_dt = get_cls_detailed_metrics(y_test, pred_dt, prob_dt)
+            metrics_hybrid = get_cls_detailed_metrics(y_test, pred_hybrid, prob_hybrid)
+            
+            # 3. 모델별 성능 비교표 출력
+            st.markdown("### 1️⃣ 모델별 주요 성능 지표")
+            df_metrics = pd.DataFrame([metrics_reg, metrics_dt, metrics_hybrid], 
+                                      index=["Logit Model", "Tree Model", "Hybrid Model"])
+            st.table(df_metrics.style.highlight_max(axis=0, color='lightgreen').format("{:.4f}"))
 
-        # Threshold slider (이진 분류 기준)
-        threshold = st.slider("🎯 분류 임계값 (Threshold)", 0.0, 1.0, 0.5, 0.01)
+            # 4. ROC Curve 비교 시각화
+            st.markdown("### 2️⃣ ROC Curve 비교")
+            fig_roc = go.Figure()
+            def add_roc_trace(y_true, y_prob, name, color):
+                fpr, tpr, _ = roc_curve(y_true, y_prob)
+                fig_roc.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=name, line=dict(color=color, width=2)))
 
-        # 이진 예측값 계산
-        y_pred_reg = (pred_reg >= threshold).astype(int)
-        y_pred_tree = (pred_tree >= threshold).astype(int)
-        y_pred_hybrid = (pred_hybrid >= threshold).astype(int)
+            add_roc_trace(y_test, prob_reg, "Logit", "blue")
+            add_roc_trace(y_test, prob_dt, "Tree", "green")
+            add_roc_trace(y_test, prob_hybrid, "Hybrid", "red")
+            
+            fig_roc.add_shape(type='line', line=dict(dash='dash', color='gray'), x0=0, x1=1, y0=0, y1=1)
+            fig_roc.update_layout(xaxis_title="False Positive Rate", yaxis_title="True Positive Rate", title="ROC Curves")
+            st.plotly_chart(fig_roc, width='stretch')
 
-        from sklearn.metrics import (
-            accuracy_score, precision_score, recall_score,
-            f1_score, roc_auc_score, roc_curve, confusion_matrix
-        )
+            # 5. Confusion Matrix (혼동 행렬) 시각화
+            st.markdown("### 3️⃣ Confusion Matrix (혼동 행렬)")
+            st.caption("각 모델이 정답을 어떻게 맞추고 틀렸는지 시각적으로 확인합니다.")
+            
+            cm_col1, cm_col2, cm_col3 = st.columns(3)
+            
+            def plot_confusion_matrix(y_true, y_pred, title):
+                cm = confusion_matrix(y_true, y_pred)
+                # 히트맵 생성
+                fig = px.imshow(cm, text_auto=True, color_continuous_scale='Blues',
+                                labels=dict(x="Predicted", y="Actual", color="Count"),
+                                x=['0 (Neg)', '1 (Pos)'], y=['0 (Neg)', '1 (Pos)'])
+                fig.update_layout(title=title, width=300, height=300, margin=dict(l=20, r=20, t=40, b=20))
+                return fig
 
-        # 📊 모델별 성능 저장 + DataFrame으로 정리
-        rows = []
-        for name, yhat, prob in [
-            ("Logistic Regression", y_pred_reg, pred_reg),
-            ("Decision Tree", y_pred_tree, pred_tree),
-            ("Hybrid Model", y_pred_hybrid, pred_hybrid),
-        ]:
-            rows.append({
-                "Model": name,
-                "Accuracy": accuracy_score(y_test, yhat),
-                "Precision": precision_score(y_test, yhat, zero_division=0),
-                "Recall": recall_score(y_test, yhat, zero_division=0),
-                "F1": f1_score(y_test, yhat, zero_division=0),
-                "ROC-AUC": roc_auc_score(y_test, prob),
-            })
+            with cm_col1:
+                st.plotly_chart(plot_confusion_matrix(y_test, pred_reg, "Logit Model"), use_container_width=True)
+            with cm_col2:
+                st.plotly_chart(plot_confusion_matrix(y_test, pred_dt, "Tree Model"), use_container_width=True)
+            with cm_col3:
+                st.plotly_chart(plot_confusion_matrix(y_test, pred_hybrid, "Hybrid Model"), use_container_width=True)
 
-        import pandas as pd
-        metrics_df = pd.DataFrame(rows)
-
-        st.markdown("### 📊 모델별 주요 성능 지표")
-        st.dataframe(metrics_df, use_container_width=True)
-
-        # 📈 ROC Curve 비교 (plotly)
-        st.markdown("### 📈 ROC Curve 비교")
-        fpr_r, tpr_r, _ = roc_curve(y_test, pred_reg)
-        fpr_t, tpr_t, _ = roc_curve(y_test, pred_tree)
-        fpr_h, tpr_h, _ = roc_curve(y_test, pred_hybrid)
-
-        import plotly.graph_objects as go
-        fig_roc = go.Figure()
-        fig_roc.add_trace(go.Scatter(x=fpr_r, y=tpr_r, mode="lines", name="Logistic Regression"))
-        fig_roc.add_trace(go.Scatter(x=fpr_t, y=tpr_t, mode="lines", name="Decision Tree"))
-        fig_roc.add_trace(go.Scatter(x=fpr_h, y=tpr_h, mode="lines", name="Hybrid Model"))
-        fig_roc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", name="Random", line=dict(dash="dash")))
-        fig_roc.update_layout(
-            xaxis_title="False Positive Rate",
-            yaxis_title="True Positive Rate",
-            height=450
-        )
-        st.plotly_chart(fig_roc, use_container_width=True)
-
-        # 🧩 Confusion Matrix 비교
-        st.markdown("### 🧩 Confusion Matrix 비교")
-        cm_reg = confusion_matrix(y_test, y_pred_reg)
-        cm_tree = confusion_matrix(y_test, y_pred_tree)
-        cm_hybrid = confusion_matrix(y_test, y_pred_hybrid)
-
-        import plotly.express as px
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.caption("Logistic Regression")
-            fig = px.imshow(cm_reg, text_auto=True, title="Confusion Matrix")
-            st.plotly_chart(fig, use_container_width=True)
-
-        with col2:
-            st.caption("Decision Tree")
-            fig = px.imshow(cm_tree, text_auto=True, title="Confusion Matrix")
-            st.plotly_chart(fig, use_container_width=True)
-
-        with col3:
-            st.caption("Hybrid Model")
-            fig = px.imshow(cm_hybrid, text_auto=True, title="Confusion Matrix")
-            st.plotly_chart(fig, use_container_width=True)
-
-        # 🔎 (선택) Hybrid 모델 예측 확률 분포 보기
-        st.markdown("### 🔎 예측 확률 분포 (Hybrid Model)")
-        fig = px.scatter(x=y_test, y=pred_hybrid, title="Hybrid: y_true vs predicted probability")
-        fig.update_layout(xaxis_title="y_true", yaxis_title="predicted probability")
-        st.plotly_chart(fig, use_container_width=True)
+        # ----------------------------------------------------------------------
+        # B. 회귀 (Regression) 평가 로직
+        # ----------------------------------------------------------------------
+        else:
+            # 1. 예측값 계산
+            pred_reg = reg_model.predict(X_test)
+            pred_dt = dt_model.predict(X_test)
+            pred_hybrid = (pred_reg * w["regression"]) + (pred_dt * w["decision_tree"])
+            
+            # 2. 성능 지표
+            def get_reg_metrics(y_true, y_pred):
+                return {
+                    "MAE": mean_absolute_error(y_true, y_pred),
+                    "RMSE": np.sqrt(mean_squared_error(y_true, y_pred)),
+                    "R²": r2_score(y_true, y_pred)
+                }
+            
+            m1 = get_reg_metrics(y_test, pred_reg)
+            m2 = get_reg_metrics(y_test, pred_dt)
+            m3 = get_reg_metrics(y_test, pred_hybrid)
+            
+            st.markdown("### 1️⃣ 회귀 모델 성능 지표")
+            df_reg = pd.DataFrame([m1, m2, m3], index=["Logit", "Tree", "Hybrid"])
+            st.table(df_reg.style.format("{:.4f}"))
+            
+            st.markdown("### 2️⃣ 예측값 vs 실제값 비교")
+            fig = px.scatter(x=y_test, y=pred_hybrid, title="Hybrid 예측 결과", labels={'x':'실제값', 'y':'예측값'})
+            fig.add_shape(type='line', line=dict(dash='dash', color='red'), x0=y_test.min(), x1=y_test.max(), y0=y_test.min(), y1=y_test.max())
+            st.plotly_chart(fig, width='stretch')
