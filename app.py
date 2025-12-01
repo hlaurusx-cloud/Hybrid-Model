@@ -375,6 +375,24 @@ elif st.session_state.step == 2:
                             
                             st.success(f"✅ 전처리 완료! (입력 변수: {len(final_features)}개, 데이터: {len(X)}행)")
                             st.dataframe(X.head(), width='stretch')
+                            
+                            # ----------------------------------------------------
+                            # 📊 클래스 불균형 확인 (SMOTE 적용 X — 단순 진단)
+                            # ----------------------------------------------------
+                            st.markdown("### 📊 📌 loan_status 클래스 비율 확인")
+
+                            y_check = st.session_state.data["y_processed"]
+                            class_ratio = y_check.value_counts(normalize=True).sort_index()
+
+                            st.write("**클래스 비율(%)**")
+                            st.write(class_ratio * 100)
+
+                            # 불균형 기준: 한 클래스가 전체의 60% 이상 차지하면 경고
+                            if class_ratio.max() > 0.6:
+                                st.warning("⚠️ 클래스 불균형이 감지되었습니다. (SMOTE 또는 class_weight 적용 필요)")
+                                st.info("💡 단계 3에서 SMOTE를 적용하여 소수 클래스(소수 집단)을 보완할 수 있습니다.")
+                            else:
+                                st.success("✔ 클래스 비율이 비교적 균형적입니다. (SMOTE 불필요)")
 
                         
                         except Exception as e:
