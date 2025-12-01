@@ -376,43 +376,7 @@ elif st.session_state.step == 2:
                             st.success(f"✅ 전처리 완료! (입력 변수: {len(final_features)}개, 데이터: {len(X)}행)")
                             st.dataframe(X.head(), width='stretch')
 
-                            
-                            st.markdown("### 🔍 추가 분석: 변수 중요도 (Feature Importance)")
-                            from sklearn.ensemble import RandomForestClassifier
-                            import pandas as pd
-                            import plotly.express as px
-                            
-                            X_imp = st.session_state.data["X_processed"]
-                            y_imp = st.session_state.data["y_processed"]
-                            rf = RandomForestClassifier(
-                                n_estimators=300, 
-                                random_state=42,
-                                class_weight='balanced'   # 클래스 불균형 자동 보정
-                            )
-                            rf.fit(X_imp, y_imp)
-                            
-                            feat_imp = pd.DataFrame({
-                                "변수명": X_imp.columns,
-                                "중요도": rf.feature_importances_
-                            }).sort_values(by="중요도", ascending=False)
-                            
-                            st.markdown("#### 🔸 중요도 상위 10개 변수")
-                            st.dataframe(feat_imp.head(10))
-                            
-                            
-                            fig = px.bar(
-                                feat_imp.head(10),
-                                x="중요도",
-                                y="변수명",
-                                orientation="h",
-                                title="📌 상위 10개 Feature Importance",
-                                text="중요도"
-                            )
-                            fig.update_layout(yaxis=dict(categoryorder='total ascending'))
-                            st.plotly_chart(fig, use_container_width=True)
-                            
-                            st.info("👆 이 분석을 통해 중요 변수 선별 또는 특성 생성(Feature Engineering)을 고려할 수 있습니다.")
-                            
+                        
                         except Exception as e:
                             st.error(f"❌ 전처리 중 오류 발생: {str(e)}")
                 else:
