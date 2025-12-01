@@ -369,7 +369,8 @@ elif st.session_state.step == 2:
                             
                             st.session_state.data["X_processed"] = X
                             st.session_state.data["y_processed"] = y
-                            
+                            st.success(f"✅ 전처리 완료! (입력 변수: {len(final_features)}개, 데이터: {len(X)}행)")
+                            st.dataframe(X.head(), width='stretch')
                             st.markdown("### 📊 클래스 불균형 확인")
                             y_counts = y.value_counts(normalize=True)
                             st.write(y_counts)
