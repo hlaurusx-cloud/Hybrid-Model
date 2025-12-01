@@ -375,7 +375,33 @@ elif st.session_state.step == 2:
                             
                             st.success(f"✅ 전처리 완료! (입력 변수: {len(final_features)}개, 데이터: {len(X)}행)")
                             st.dataframe(X.head(), width='stretch')
-                            
+# ---------------------------------------------
+# 📌 Feature Importance 분석 (전처리 완료 후)
+# ---------------------------------------------
+st.markdown("### 🔍 변수 중요도 분석 (Feature Importance)")
+
+from sklearn.ensemble import RandomForestClassifier
+import pandas as pd
+
+X_imp = st.session_state.data["X_processed"]
+y_imp = st.session_state.data["y_processed"]
+
+# RandomForest 모델로 중요도 분석
+rf = RandomForestClassifier(
+    n_estimators=300, 
+    random_state=42,
+    class_weight='balanced'    # 데이터 불균형 자동 보정
+)
+rf.fit(X_imp, y_imp)
+
+# 중요도 데이터프레임 생성
+feat_imp = pd.DataFrame({
+    "변수명": X_imp.columns,
+    "중요도": rf.feature_importances_
+}).sort_values(by="중요도", ascending=False)
+
+st.write(feat_imp.head(10))  # 상위 10개만 표시
+
                         except Exception as e:
                             st.error(f"❌ 전처리 중 오류 발생: {str(e)}")
                 else:
