@@ -532,9 +532,9 @@ elif st.session_state.step == 4:
         X_test = st.session_state.data["X_test"]
         y_test = st.session_state.data["y_test"]
         
-        reg_model = st.session_state.models["regression"]
-        dt_model = st.session_state.models["decision_tree"]
-        w = st.session_state.models["mixed_weights"]
+        reg_model = st.session_state.models["logit_model"]
+        dt_model = st.session_state.models["tree_model"]
+        w = st.session_state.models["hybrid_weights"]
         
         st.info(f"ℹ️ Hybrid 가중치: Logit {w['regression']*100:.0f}% + Tree {w['decision_tree']*100:.0f}%")
         
