@@ -10,3 +10,4 @@ plotly>=5.22.0
 # 可选依赖（如果你的数据是Excel/Parquet，需保留）
 openpyxl>=3.1.0  # 读取.xlsx/.xls文件
 pyarrow>=16.0.0  # 读取.parquet文件
+imbalanced-learn
