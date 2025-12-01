@@ -525,12 +525,9 @@ elif st.session_state.step == 3:
 elif st.session_state.step == 4:
     st.subheader("📈 모델 성능 심층 평가")
     
-    if st.session_state.models["regression"] is None:
+    if "logit_model" not in st.session_state.models:
         st.warning("⚠️ 먼저 [모델 학습] 단계를 완료하세요")
     else:
-        # 데이터 및 모델 로드
-        X_test = st.session_state.data["X_test"]
-        y_test = st.session_state.data["y_test"]
         
         reg_model = st.session_state.models["regression"]
         dt_model = st.session_state.models["decision_tree"]
