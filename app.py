@@ -231,18 +231,14 @@ elif st.session_state.step == 2:
         st.markdown("### 1️⃣ 분석 변수 설정")
         
         col1, col2 = st.columns(2)
-        
+
+
         # ---------------------------------------------------------
         # [핵심 1] 타겟 변수(Y) 정의
         # ---------------------------------------------------------
         with col1:
-            default_target = "loan_status" if "loan_status" in all_cols else None  
-            target_col = st.selectbox(
-                "🎯 타겟 변수 (Y) 선택",
-                options=all_cols,
-                index=all_cols.index(default_target) if default_target else 0,  # 自动定位到 loan_status
-                help="예측되 타켓변수"
-            )
+            target_col = "loan_status"  
+            st.write(f"🎯 타겟 변수(Y) 已自动设置为: **{target_col}**")
 
             
         # ---------------------------------------------------------
