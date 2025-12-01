@@ -536,7 +536,7 @@ elif st.session_state.step == 4:
         dt_model = st.session_state.models["tree_model"]
         w = st.session_state.models["hybrid_weight"]
         
-        st.info(f"ℹ️ Hybrid 가중치: Logit {w['regression']*100:.0f}% + Tree {w['decision_tree']*100:.0f}%")
+        st.info(f"ℹ️ Hybrid 가중치: Logit {w*100:.0f}% + Tree {(1-w)*100:.0f}%")
         
         # ----------------------------------------------------------------------
         # A. 분류 (Classification) 평가 로직 - [요청하신 기능 집중 구현]
