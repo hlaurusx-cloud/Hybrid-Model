@@ -236,11 +236,14 @@ elif st.session_state.step == 2:
         # [핵심 1] 타겟 변수(Y) 정의
         # ---------------------------------------------------------
         with col1:
+            default_target = "loan_status" if "loan_status" in all_cols else None  
             target_col = st.selectbox(
-                "🎯 타겟 변수 (Y) 선택", 
+                "🎯 타겟 변수 (Y) 선택",
                 options=all_cols,
-                help="예측하고자 하는 목표 변수입니다."
+                index=all_cols.index(default_target) if default_target else 0,  # 自动定位到 loan_status
+                help="예측되 타켓변수"
             )
+
             
         # ---------------------------------------------------------
         # [핵심 2] 타겟 변수 정의에 따른 입력 변수(X) 후보 목록 구성
