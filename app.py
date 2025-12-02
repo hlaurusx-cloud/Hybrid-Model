@@ -443,6 +443,7 @@ elif st.session_state.step == 3:
             horizontal=True
         )
         is_classification = "분류" in task_option
+        st.session_state["is_classification"] = is_classification
 
         st.divider()
 
@@ -574,20 +575,22 @@ elif st.session_state.step == 3:
 # ==============================================================================
 elif st.session_state.step == 4:
     st.subheader("📈 모델 성능 심층 평가")
-    
+
     # 1. 모델이 학습되었는지 확인
     if "logit_model" not in st.session_state.models or "tree_model" not in st.session_state.models:
         st.warning("⚠️ 먼저 [모델 학습] 단계를 완료하세요")
     else:
+        # 🔹 분류 / 회귀 플래그 (step 3에서 저장한 값 사용)
+        is_classification = st.session_state.get("is_classification", True)
+
         # ------------------------------------------------------------------
-        # ✅ 2. 데이터 및 모델 로드 (단계 3에서 저장한 키와 동일하게 사용)
+        # ✅ 2. 데이터 및 모델 로드
         # ------------------------------------------------------------------
-        # 👉 하이브리드 평가에 사용할 Test 데이터 (단계 3에서 X_test_hybrid로 저장했음)
         X_test = st.session_state.data["X_test_hybrid"]
         y_test = st.session_state.data["y_test_hybrid"]
         
-        reg_model = st.session_state.models["logit_model"]     # 로지스틱(또는 회귀) 모델
-        dt_model  = st.session_state.models["tree_model"]      # 트리 모델
+        reg_model = st.session_state.models["logit_model"]     # 분류일 땐 Logit, 회귀일 땐 LinearRegression
+        dt_model  = st.session_state.models["tree_model"]      # 분류일 땐 TreeClassifier, 회귀일 땐 TreeRegressor
         w         = st.session_state.models["hybrid_weight"]   # Logit 가중치 (0~1)
         
         st.info(f"ℹ️ Hybrid 가중치: Logit {w*100:.0f}% + Tree {(1-w)*100:.0f}%")
@@ -595,7 +598,7 @@ elif st.session_state.step == 4:
         # ----------------------------------------------------------------------
         # A. 분류 (Classification) 평가 로직
         # ----------------------------------------------------------------------
-        if st.session_state.task == "logit" or st.session_state.task == "classification":
+        if is_classification:
             # 1. 확률 및 클래스 예측
             # (1) Logit
             prob_reg = reg_model.predict_proba(X_test)[:, 1]
@@ -611,12 +614,13 @@ elif st.session_state.step == 4:
             
             # 2. 성능 지표 계산 함수
             def get_cls_detailed_metrics(y_true, y_pred, y_prob):
+                fpr, tpr, _ = roc_curve(y_true, y_prob)
                 return {
                     "Accuracy": accuracy_score(y_true, y_pred),
                     "Precision": precision_score(y_true, y_pred, zero_division=0),
                     "Recall": recall_score(y_true, y_pred, zero_division=0),
                     "F1-Score": f1_score(y_true, y_pred, zero_division=0),
-                    "AUC": auc(*roc_curve(y_true, y_prob)[:2])
+                    "AUC": auc(fpr, tpr)
                 }
 
             metrics_reg     = get_cls_detailed_metrics(y_test, pred_reg, prob_reg)
@@ -715,7 +719,7 @@ elif st.session_state.step == 4:
             m3 = get_reg_metrics(y_test, pred_hybrid)
             
             st.markdown("### 1️⃣ 회귀 모델 성능 지표")
-            df_reg = pd.DataFrame([m1, m2, m3], index=["Logit", "Tree", "Hybrid"])
+            df_reg = pd.DataFrame([m1, m2, m3], index=["Linear(전 Logit 자리)", "Tree", "Hybrid"])
             st.table(df_reg.style.format("{:.4f}"))
             
             st.markdown("### 2️⃣ 예측값 vs 실제값 비교 (Hybrid)")
