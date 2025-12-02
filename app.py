@@ -482,14 +482,7 @@ elif st.session_state.step == 3:
                 "🔧 트리 깊이 (max_depth)",
                 2, 20, 6
             )
-            min_samples_split = st.slider(
-                "🔧 최소 분할 샘플 수 (min_samples_split)",
-                2, 20, 2
-            )
-            min_samples_leaf = st.slider(
-                "🔧 최소 리프 샘플 수 (min_samples_leaf)",
-                1, 20, 1
-            )
+            # ⛔ min_samples_split, min_samples_leaf 제거
 
         # ⚖️ Hybrid Model 설정
         with st.expander("⚖ Hybrid 모델 설정", expanded=True):
@@ -540,16 +533,12 @@ elif st.session_state.step == 3:
                     )
                     tree_model = DecisionTreeClassifier(
                         max_depth=tree_depth,
-                        min_samples_split=min_samples_split,
-                        min_samples_leaf=min_samples_leaf,
                         random_state=42
                     )
                 else:
                     logit_model = LinearRegression()
                     tree_model = DecisionTreeRegressor(
                         max_depth=tree_depth,
-                        min_samples_split=min_samples_split,
-                        min_samples_leaf=min_samples_leaf,
                         random_state=42
                     )
 
