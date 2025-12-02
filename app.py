@@ -412,13 +412,7 @@ elif st.session_state.step == 2:
                             st.success(f"✅ 전처리 완료! (입력 변수: {len(final_features)}개, 데이터: {len(X)}행)")
                             st.dataframe(X.head(), width='stretch')
                             
-                            st.markdown("### 📊 클래스 불균형 확인")
-                            y_counts = y.value_counts(normalize=True)
-                            st.write(y_counts)
-                            
-                            st.session_state.use_smote = y_counts.max() > 0.6
-
-                            # 🔧 NEW: use_smote 初始设定（防止以后出现无定义错误）
+                        
                             if "use_smote" not in st.session_state:
                                 st.session_state.use_smote = False
                             
