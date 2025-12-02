@@ -441,7 +441,7 @@ elif st.session_state.step == 3:
         y = st.session_state.data["y_processed"]
 
         # -------------------------------------------------------------
-        # 1️⃣ 분석 유형 선택
+        # 1️⃣ 분석 유형 선택 (분류 / 회귀)
         # -------------------------------------------------------------
         task_option = st.radio(
             "분석 유형을 선택하세요:",
@@ -453,37 +453,94 @@ elif st.session_state.step == 3:
         st.divider()
 
         # -------------------------------------------------------------
-        # 2️⃣ 모델 설정 & 데이터 분리 (로그/트리/하이브리드 모두 유지!)
+        # 2️⃣ 모델별 하이퍼파라미터 설정 (Top-down 형식)
         # -------------------------------------------------------------
-        st.markdown("### 2️⃣ Logit / Tree / Hybrid 모델 설정")
+        st.markdown("### 2️⃣ 모델별 하이퍼파라미터 설정")
 
-        col1, col2, col3 = st.columns(3)
+        # 🔹 Logit / Linear Model 설정
+        with st.expander("🔹 Logit (분류) / Linear (회귀) 모델 설정", expanded=True):
+            test_size_logit = st.slider(
+                "📌 Logit / Linear 모델용 Test 비율",
+                0.1, 0.4, 0.2, key="logit_test"
+            )
 
-        # 🔹 Logit Model
-        with col1:
-            st.subheader("🔹 Logit")
-            test_size_logit = st.slider("📌 Test 비율", 0.1, 0.4, 0.2, key="logit_test")
+            if is_classification:
+                # 👉 로지스틱 회귀 세부 설정
+                C_logit = st.slider(
+                    "🔧 Logit 규제 강도(C, 작을수록 규제가 강함)",
+                    0.01, 10.0, 1.0, 0.01
+                )
+                max_iter_logit = st.slider(
+                    "🔧 Logit 최대 반복 횟수 (max_iter)",
+                    100, 5000, 1000, 100
+                )
+                st.caption("※ solver는 'lbfgs', penalty는 기본 L2로 고정하여 안정적으로 학습합니다.")
+            else:
+                st.caption("회귀 선택 시 sklearn의 LinearRegression 기본 옵션을 사용합니다.")
 
-        # 🌳 Tree Model
-        with col2:
-            st.subheader("🌳 Tree")
-            tree_depth = st.slider("📌 트리 깊이 (max_depth)", 2, 20, 6)
-            test_size_tree = st.slider("📌 Test 비율", 0.1, 0.4, 0.2, key="tree_test")
+        # 🌳 Tree Model 설정
+        with st.expander("🌳 Tree 모델 설정 (Decision Tree)", expanded=True):
+            test_size_tree = st.slider(
+                "📌 Tree 모델용 Test 비율",
+                0.1, 0.4, 0.2, key="tree_test"
+            )
+            tree_depth = st.slider(
+                "🔧 트리 깊이 (max_depth)",
+                2, 20, 6
+            )
+            min_samples_split = st.slider(
+                "🔧 내부 노드 분할에 필요한 최소 샘플 수 (min_samples_split)",
+                2, 20, 2
+            )
+            min_samples_leaf = st.slider(
+                "🔧 리프 노드에 필요한 최소 샘플 수 (min_samples_leaf)",
+                1, 20, 1
+            )
 
-        # ⚖️ Hybrid Model
-        with col3:
-            st.subheader("⚖ Hybrid")
+        # ⚖️ Hybrid Model 설정
+        with st.expander("⚖ Hybrid 모델 설정", expanded=True):
+            test_size_hybrid = st.slider(
+                "📌 Hybrid 모델용 Test 비율",
+                0.1, 0.4, 0.2, key="hybrid_test"
+            )
             reg_weight = st.slider(
                 "Logit 가중치",
                 0.0, 1.0, 0.5, 0.1,
                 key="hybrid_weight"
             )
-            st.caption(f"Logit {reg_weight*100:.0f}% + Tree {(1-reg_weight)*100:.0f}%")
+            st.caption(f"👉 최종 예측: Logit {reg_weight*100:.0f}% + Tree {(1-reg_weight)*100:.0f}% 가중 평균")
 
         st.divider()
 
         # -------------------------------------------------------------
-        # 3️⃣ 모델 학습 시작 버튼
+        # 3️⃣ 클래스 불균형 옵션 (분류일 때만)
+        # -------------------------------------------------------------
+        if is_classification:
+            st.markdown("### 3️⃣ 클래스 불균형 처리 옵션")
+
+            # SMOTE 사용 여부
+            default_use_smote = st.session_state.get("use_smote", False)
+            use_smote_flag = st.checkbox(
+                "🚨 클래스 불균형 개선을 위해 SMOTE 사용하기 (Train 데이터에만 적용)",
+                value=default_use_smote
+            )
+
+            # class_weight 옵션
+            use_class_weight = st.checkbox(
+                "⚖ 추가로 class_weight='balanced' 옵션 사용하기",
+                value=default_use_smote
+            )
+
+            # 상태 업데이트
+            st.session_state.use_smote = use_smote_flag
+        else:
+            use_smote_flag = False
+            use_class_weight = False
+
+        st.divider()
+
+        # -------------------------------------------------------------
+        # 4️⃣ 모델 학습 시작 버튼
         # -------------------------------------------------------------
         if st.button("🏁 모델 학습 시작"):
             try:
@@ -499,13 +556,13 @@ elif st.session_state.step == 3:
                     X, y, test_size=test_size_tree, random_state=42, stratify=stratify_opt
                 )
                 X_train_hybrid, X_test_hybrid, y_train_hybrid, y_test_hybrid = train_test_split(
-                    X, y, test_size=0.2, random_state=42, stratify=stratify_opt
+                    X, y, test_size=test_size_hybrid, random_state=42, stratify=stratify_opt
                 )
 
                 # -------------------------------------------------------------
-                # 🚨 클래스 불균형 자동 감지 + SMOTE 적용 (Classification만 수행)
+                # 🚨 SMOTE 적용 (Classification만, Train 데이터만)
                 # -------------------------------------------------------------
-                if is_classification and st.session_state.use_smote:
+                if is_classification and use_smote_flag:
                     st.info("🚨 클래스 불균형 감지 → SMOTE 적용 중...")
 
                     from imblearn.over_sampling import SMOTE
@@ -520,26 +577,45 @@ elif st.session_state.step == 3:
                 # -------------------------------------------------------------
                 # class_weight 설정
                 # -------------------------------------------------------------
-                class_weight_opt = 'balanced' if is_classification and st.session_state.use_smote else None
+                class_weight_opt = 'balanced' if (is_classification and use_class_weight) else None
 
                 # -------------------------------------------------------------
-                # 4️⃣ 모델 생성 (Logit / Tree / Hybrid 유지)
+                # 5️⃣ 모델 생성 (Logit / Tree / Hybrid 유지)
                 # -------------------------------------------------------------
                 if is_classification:
-                    logit_model = LogisticRegression(max_iter=1000, class_weight=class_weight_opt)
-                    tree_model = DecisionTreeClassifier(max_depth=tree_depth, random_state=42, class_weight=class_weight_opt)
+                    # 🔹 로지스틱 회귀 (세부 설정 반영)
+                    logit_model = LogisticRegression(
+                        max_iter=max_iter_logit,
+                        C=C_logit,
+                        class_weight=class_weight_opt,
+                        solver="lbfgs"  # 안정적인 기본값
+                    )
+
+                    tree_model = DecisionTreeClassifier(
+                        max_depth=tree_depth,
+                        min_samples_split=min_samples_split,
+                        min_samples_leaf=min_samples_leaf,
+                        random_state=42,
+                        class_weight=class_weight_opt
+                    )
                 else:
+                    # 🔹 회귀일 경우: 선형 회귀 + 결정 트리 회귀
                     logit_model = LinearRegression()
-                    tree_model = DecisionTreeRegressor(max_depth=tree_depth, random_state=42)
+                    tree_model = DecisionTreeRegressor(
+                        max_depth=tree_depth,
+                        min_samples_split=min_samples_split,
+                        min_samples_leaf=min_samples_leaf,
+                        random_state=42
+                    )
 
                 # -------------------------------------------------------------
-                # 5️⃣ 각 모델 학습 실행
+                # 6️⃣ 각 모델 학습 실행
                 # -------------------------------------------------------------
                 logit_model.fit(X_train_logit, y_train_logit)
                 tree_model.fit(X_train_tree, y_train_tree)
 
                 # -------------------------------------------------------------
-                # 6️⃣ Hybrid 가중치 저장
+                # 7️⃣ Hybrid 가중치 및 Test 데이터 저장
                 # -------------------------------------------------------------
                 st.session_state.models.update({
                     "logit_model": logit_model,
