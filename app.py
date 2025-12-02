@@ -250,7 +250,6 @@ elif st.session_state.step == 2:
             
         # ---------------------------------------------------------
         # [핵심 2] 타겟 변수 정의에 따른 입력 변수(X) 후보 목록 구성
-        # 타겟 변수와 입력 변수가 겹치지 않도록 리스트에서 제외합니다.
         # ---------------------------------------------------------
         feature_candidates = [c for c in all_cols if c != target_col]
         
@@ -258,7 +257,7 @@ elif st.session_state.step == 2:
             default_feats = feature_candidates[:10] if len(feature_candidates) > 10 else feature_candidates
             selected_features = st.multiselect(
                 "📋 입력 변수 (X) 선택",
-                options=feature_candidates, # 타겟이 제외된 리스트 사용
+                options=feature_candidates,  # 타겟이 제외된 리스트 사용
                 default=default_feats,
                 help="타겟 변수를 예측하기 위해 사용할 데이터입니다."
             )
@@ -271,12 +270,17 @@ elif st.session_state.step == 2:
             # 설정 저장
             st.session_state.preprocess["target_col"] = target_col
             
-            # 탭 생성 (리스트 인덱싱으로 안전하게 접근)
+            # 탭 생성
             tabs = st.tabs(["⚡ 전처리 실행"])
             tab1 = tabs[0]
             
             with tab1:
-                st.write(f"**Y(타겟) 결측치 제거** 및 **X(입력) 결측치 채우기**를 수행합니다.")
+                st.write(
+                    "**Y(타겟) 결측치 제거**, "
+                    "**X(입력) 결측치 처리**, "
+                    "**결측치 95% 이상 변수 제거**, "
+                    "**이상치(IQR) 처리**를 수행합니다."
+                )
                 
                 if st.button("🚀 전처리 및 정제 시작", type="primary"):
                     with st.spinner("데이터 정제 중..."):
@@ -295,23 +299,33 @@ elif st.session_state.step == 2:
                             if dropped_count > 0:
                                 st.warning(f"⚠️ 타겟 변수({target_col})가 비어있는 {dropped_count}개 행을 제거했습니다.")
                             
-                            # 데이터 분리
-                            X = clean_df[selected_features].copy()
+                            # 🔹 추가: 입력 변수 영역에서 결측치 비율 95% 이상인 컬럼 제거
+                            X_raw = clean_df[selected_features].copy()
+                            missing_ratio = X_raw.isna().mean()
+                            high_missing_cols = missing_ratio[missing_ratio >= 0.95].index.tolist()
+                            
+                            if high_missing_cols:
+                                st.warning(
+                                    f"⚠️ 결측치 비율이 95% 이상인 변수 {len(high_missing_cols)}개를 제거했습니다: "
+                                    f"{', '.join(high_missing_cols)}"
+                                )
+                                X_raw = X_raw.drop(columns=high_missing_cols)
+                                # 선택된 특성 목록도 동기화
+                                selected_features = [c for c in selected_features if c not in high_missing_cols]
+                            
+                            # 타겟 분리
                             y = clean_df[target_col].copy()
                             
                             # -----------------------------------------------------
                             # [핵심 3] 타겟 변수(Y)의 타입에 따른 인코딩 처리
-                            # 분류 문제인데 타겟이 문자열이면 LabelEncoding 수행
                             # -----------------------------------------------------
                             le_target = None
                             
-                            # 로직: Task가 분류(logit)이거나, 데이터 타입이 객체(문자)인 경우
                             if y.dtype == 'object' or y.dtype.name == 'category':
                                 try:
                                     le_target = LabelEncoder()
                                     y = pd.Series(le_target.fit_transform(y), index=y.index)
                                     st.info(f"ℹ️ 타겟 변수 '{target_col}'가 문자열 형식이어서 숫자로 변환(Label Encoding)했습니다.")
-                                    # 인코딩 클래스 정보 표시 (예: 0=Fail, 1=Pass)
                                     mapping_info = {i: label for i, label in enumerate(le_target.classes_)}
                                     st.caption(f"└ 변환 정보: {mapping_info}")
                                 except Exception as e:
@@ -320,6 +334,8 @@ elif st.session_state.step == 2:
                             # -----------------------------------------------------
                             # 입력 변수(X) 전처리 시작
                             # -----------------------------------------------------
+                            X = X_raw.copy()
+                            
                             num_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
                             cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
                             
@@ -331,11 +347,34 @@ elif st.session_state.step == 2:
                             imputer = SimpleImputer(strategy='mean')
                             scaler = StandardScaler()
                             encoders = {}
+                            outlier_bounds = {}  # 🔹 추가: 이상치 처리에 사용된 경계값 저장용
 
-                            # 2. 수치형 변수 처리 (결측치 평균 대치 -> 스케일링)
+                            # 2. 수치형 변수 처리 (결측치 평균 대치 -> 이상치 처리 -> 스케일링)
                             if num_cols:
+                                # 2-1) 결측치 평균 대치
                                 X_imputed = imputer.fit_transform(X[num_cols])
-                                X_scaled = scaler.fit_transform(X_imputed)
+                                X_num_df = pd.DataFrame(X_imputed, columns=num_cols, index=X.index)
+
+                                # 🔹 2-2) 이상치(IQR 기준) 처리: 윈저라이징
+                                for col in num_cols:
+                                    q1 = X_num_df[col].quantile(0.25)
+                                    q3 = X_num_df[col].quantile(0.75)
+                                    iqr = q3 - q1
+                                    
+                                    if iqr == 0:
+                                        # IQR이 0이면 이상치 기준이 의미 없으므로 스킵
+                                        continue
+                                    
+                                    lower = q1 - 1.5 * iqr
+                                    upper = q3 + 1.5 * iqr
+                                    
+                                    # 경계 저장 (추후 예측 시 동일 규칙 적용하려면 필요)
+                                    outlier_bounds[col] = {"lower": lower, "upper": upper}
+                                    
+                                    X_num_df[col] = X_num_df[col].clip(lower=lower, upper=upper)
+                                
+                                # 2-3) 스케일링
+                                X_scaled = scaler.fit_transform(X_num_df)
                                 X[num_cols] = pd.DataFrame(X_scaled, columns=num_cols, index=X.index)
                             
                             # 3. 범주형 변수 처리 (결측치 'Unknown' -> Label Encoding)
@@ -349,7 +388,7 @@ elif st.session_state.step == 2:
                             # 최종 데이터 병합 및 정리
                             final_features = num_cols + cat_cols
                             X = X[final_features]
-                            X = X.replace([np.inf, -np.inf], np.nan) # 무한대 처리
+                            X = X.replace([np.inf, -np.inf], np.nan)  # 무한대 처리
                             
                             # 잔여 결측치 확인 (있으면 0으로 채움)
                             if X.isna().sum().sum() > 0:
@@ -364,29 +403,30 @@ elif st.session_state.step == 2:
                                 "imputer": imputer if num_cols else None,
                                 "scaler": scaler if num_cols else None,
                                 "encoders": encoders,
-                                "target_encoder": le_target
+                                "target_encoder": le_target,
+                                "outlier_bounds": outlier_bounds  # 🔹 추가: 이상치 경계 저장
                             })
                             
                             st.session_state.data["X_processed"] = X
                             st.session_state.data["y_processed"] = y
                             st.success(f"✅ 전처리 완료! (입력 변수: {len(final_features)}개, 데이터: {len(X)}행)")
                             st.dataframe(X.head(), width='stretch')
+                            
                             st.markdown("### 📊 클래스 불균형 확인")
                             y_counts = y.value_counts(normalize=True)
                             st.write(y_counts)
                             
                             st.session_state.use_smote = y_counts.max() > 0.6
 
-                            # 🔧 NEW: use_smote 初始设定（防止以后出现无定义错误
+                            # 🔧 NEW: use_smote 初始设定（防止以后出现无定义错误）
                             if "use_smote" not in st.session_state:
                                 st.session_state.use_smote = False
-
-                            
                             
                         except Exception as e:
                             st.error(f"❌ 전처리 중 오류 발생: {str(e)}")
                 else:
                     st.info("👈 위 버튼을 눌러 전처리를 시작하세요.")
+
 
 # ==============================================================================
 #  단계 3：🚀 모델 학습 (SMOTE + class_weight + 기존 3모델 유지)
