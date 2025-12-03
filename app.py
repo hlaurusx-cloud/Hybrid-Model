@@ -216,7 +216,7 @@ elif st.session_state.step == 1:
                 st.info("Y축 변수를 선택하면 그래프가 표시됩니다.")
 
 # ----------------------
-#  단계 2：데이터 전처리 & 변수 선택 (한 단계 안에서: 전처리 → 변수선택)
+#  단계 2：데이터 전처리 & 변수 선택
 # ----------------------
 elif st.session_state.step == 2:
     st.subheader("🧹 데이터 전처리 & 변수 선택")
@@ -229,52 +229,46 @@ elif st.session_state.step == 2:
         all_cols = df_origin.columns.tolist()
 
         # ---------------------------------------------------------
-        # 1️⃣ 타겟 변수(Y) 먼저 선택 (기존 로직 그대로 유지)
+        # 1️⃣ 타겟 변수(Y) 먼저 선택 (기존 Loan_status 우선 로직 유지)
         # ---------------------------------------------------------
-        st.markdown("### 1️⃣ 타겟 변수 설정 & 전처리 실행")
+        st.markdown("### 1️⃣ 타겟 변수 설정")
 
-        col1, col2 = st.columns([2, 1])
+        if "Loan_status" in all_cols:
+            default_index = all_cols.index("Loan_status")
+        else:
+            default_index = 0
+            
+        target_col = st.selectbox(
+            "🎯 타겟 변수 (Y) 선택", 
+            options=all_cols,
+            index=default_index,
+            help="예측하고자 하는 목표 변수입니다."
+        )
 
-        with col1:
-            if "Loan_status" in all_cols:
-                default_index = all_cols.index("Loan_status")
-            else:
-                default_index = 0
-                
-            target_col = st.selectbox(
-                "🎯 타겟 변수 (Y) 선택", 
-                options=all_cols,
-                index=default_index,
-                help="예측하고자 하는 목표 변수입니다."
-            )
-
-        with col2:
-            st.info("타겟 변수를 선택한 다음, 아래 전처리 버튼을 눌러주세요.")
-
-        # 타겟 변수 이름을 세션에 저장 (step 3에서도 사용)
+        # 타겟 이름을 미리 저장 (다음 단계에서 사용)
         st.session_state.preprocess["target_col"] = target_col
 
         st.divider()
 
         # ---------------------------------------------------------
-        # 2️⃣ 전처리 실행 버튼 (X 후보 전체에 대해 전처리)
+        # 2️⃣ 전처리 실행 (X는 아직 전체 후보, 나중에 선택)
         # ---------------------------------------------------------
         st.markdown("### 2️⃣ 데이터 전처리 실행")
 
         if st.button("🚀 전처리 및 정제 시작", type="primary"):
             with st.spinner("데이터 정제 중..."):
                 try:
-                    # 1. 타겟(Y) 결측치 제거 (타겟 없는 행은 학습 불가)
+                    # 2-1) 타겟(Y) 결측치 제거
                     clean_df = df_origin.dropna(subset=[target_col]).reset_index(drop=True)
                     dropped_count = len(df_origin) - len(clean_df)
                     if dropped_count > 0:
                         st.warning(f"⚠️ 타겟 변수({target_col})가 비어있는 {dropped_count}개 행을 제거했습니다.")
 
-                    # 2. 입력 변수(X) 후보: 타겟을 제외한 모든 컬럼
+                    # 2-2) X 후보: 타겟을 제외한 모든 컬럼
                     X_raw = clean_df.drop(columns=[target_col])
                     y = clean_df[target_col].copy()
 
-                    # 🔹 결측치 비율 95% 이상인 X 컬럼 제거
+                    # 2-3) X에서 결측치 비율 95% 이상인 컬럼 제거
                     missing_ratio = X_raw.isna().mean()
                     high_missing_cols = missing_ratio[missing_ratio >= 0.95].index.tolist()
                     if high_missing_cols:
@@ -285,7 +279,7 @@ elif st.session_state.step == 2:
                         X_raw = X_raw.drop(columns=high_missing_cols)
 
                     # -----------------------------------------------------
-                    # [핵심 3] 타겟 변수(Y)의 타입에 따른 인코딩 처리 (기존 로직 유지)
+                    # 2-4) 타겟(Y) 인코딩 (문자형일 경우)
                     # -----------------------------------------------------
                     le_target = None
                     if y.dtype == 'object' or y.dtype.name == 'category':
@@ -299,29 +293,27 @@ elif st.session_state.step == 2:
                             st.warning(f"타겟 변수 인코딩 중 이슈 발생: {e}")
 
                     # -----------------------------------------------------
-                    # 입력 변수(X) 전처리 시작 (아직 변수 선택은 안 함)
+                    # 2-5) X 전처리 (결측치, 이상치, 스케일링, 인코딩)
                     # -----------------------------------------------------
                     X = X_raw.copy()
                     
                     num_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
                     cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
                     
-                    # 1. 값이 하나도 없는 수치형 컬럼 제외
+                    # 값이 하나도 없는 수치형 컬럼 제거
                     valid_num_cols = [c for c in num_cols if X[c].notna().sum() > 0]
                     num_cols = valid_num_cols 
 
-                    # 변환기 준비
                     imputer = SimpleImputer(strategy='mean')
                     scaler = StandardScaler()
                     encoders = {}
                     outlier_bounds = {}
 
-                    # 2. 수치형 변수 처리 (결측치 평균 대치 -> 이상치 처리 -> 스케일링)
+                    # 수치형 처리: 평균 대치 → IQR 윈저라이징 → 스케일링
                     if num_cols:
                         X_imputed = imputer.fit_transform(X[num_cols])
                         X_num_df = pd.DataFrame(X_imputed, columns=num_cols, index=X.index)
 
-                        # IQR 기준 윈저라이징
                         for col in num_cols:
                             q1 = X_num_df[col].quantile(0.25)
                             q3 = X_num_df[col].quantile(0.75)
@@ -333,11 +325,10 @@ elif st.session_state.step == 2:
                             outlier_bounds[col] = {"lower": lower, "upper": upper}
                             X_num_df[col] = X_num_df[col].clip(lower=lower, upper=upper)
 
-                        # 스케일링
                         X_scaled = scaler.fit_transform(X_num_df)
                         X[num_cols] = pd.DataFrame(X_scaled, columns=num_cols, index=X.index)
                     
-                    # 3. 범주형 변수 처리 (결측치 'Unknown' -> Label Encoding)
+                    # 범주형 처리: 결측치 'Unknown' → LabelEncoding
                     for col in cat_cols:
                         X[col] = X[col].fillna("Unknown").astype(str)
                         le = LabelEncoder()
@@ -345,20 +336,18 @@ elif st.session_state.step == 2:
                         X[col] = pd.Series(trans, index=X.index)
                         encoders[col] = le
                     
-                    # 최종 X 후보 컬럼 목록
+                    # 최종 컬럼 목록 & 잔여 결측치 처리
                     final_features = num_cols + cat_cols
                     X = X[final_features]
                     X = X.replace([np.inf, -np.inf], np.nan)
-                    
                     if X.isna().sum().sum() > 0:
                         st.info("ℹ️ 처리되지 않은 잔여 결측치를 0으로 대치합니다.")
                         X = X.fillna(0)
 
-                    # -----------------------------------------------------
-                    # 전처리 결과를 "후보 데이터"로 저장 (아직 X 최종 선택 전)
-                    # -----------------------------------------------------
-                    st.session_state.data["X_candidates"] = X          # 전처리된 전체 X 후보
-                    st.session_state.data["y_processed"] = y          # 전처리된 Y
+                    # 후보 X, y 저장 (아직 최종 X 선택 전)
+                    st.session_state.data["X_candidates"] = X
+                    st.session_state.data["y_processed"] = y
+
                     st.session_state.preprocess.update({
                         "feature_candidates": final_features,
                         "imputer": imputer if num_cols else None,
@@ -368,12 +357,12 @@ elif st.session_state.step == 2:
                         "outlier_bounds": outlier_bounds
                     })
 
-                    # SMOTE 플래그 기본값 (나중에 분류일 때만 사용)
+                    # SMOTE 플래그 기본값 (분류에서만 사용)
                     if "use_smote" not in st.session_state:
                         st.session_state.use_smote = False
 
                     st.success(f"✅ 전처리 완료! (후보 변수: {len(final_features)}개, 데이터: {len(X)}행)")
-                    st.dataframe(X.head(), width='stretch')
+                    st.dataframe(X.head(), use_container_width=True)
 
                 except Exception as e:
                     st.error(f"❌ 전처리 중 오류 발생: {str(e)}")
@@ -381,7 +370,7 @@ elif st.session_state.step == 2:
         st.divider()
 
         # ---------------------------------------------------------
-        # 3️⃣ 전처리된 데이터에서 최종 변수 선택 (같은 단계에서 진행)
+        # 3️⃣ 전처리된 데이터에서 최종 입력 변수(X) 선택
         # ---------------------------------------------------------
         if "X_candidates" in st.session_state.data:
             st.markdown("### 3️⃣ 최종 입력 변수(X) 선택")
@@ -392,7 +381,7 @@ elif st.session_state.step == 2:
                 X_candidates.columns.tolist()
             )
 
-            # 이전에 선택한 feature_cols 있으면 기본값으로 사용
+            # 이전에 선택한 feature_cols 있으면 기본값으로 활용
             prev_selected = st.session_state.preprocess.get(
                 "feature_cols",
                 feature_candidates[:10] if len(feature_candidates) > 10 else feature_candidates
@@ -402,13 +391,12 @@ elif st.session_state.step == 2:
                 "📋 분석에 사용할 최종 입력 변수 (X)",
                 options=feature_candidates,
                 default=prev_selected,
-                help="전처리된 변수들 중에서 실제 모델에 넣을 변수만 선택합니다."
+                help="전처리된 변수들 중에서 실제 모델에 사용할 입력 변수만 선택합니다."
             )
 
             if not selected_features:
                 st.error("⚠️ 최소 1개 이상의 입력 변수를 선택해주세요.")
             else:
-                # 최종 X 구성 및 세션에 저장
                 X_final = X_candidates[selected_features].copy()
                 st.session_state.data["X_processed"] = X_final
                 st.session_state.preprocess["feature_cols"] = selected_features
