@@ -216,11 +216,10 @@ elif st.session_state.step == 1:
                 st.info("Y축 변수를 선택하면 그래프가 표시됩니다.")
 
 # ----------------------
-#  단계 2：데이터 전처리 (기존 단계 3에서 이동)
+#  단계 2：데이터 전처리 & 변수 선택 (한 단계 안에서: 전처리 → 변수선택)
 # ----------------------
 elif st.session_state.step == 2:
-    # 🔹 여기 제목만 순서 바꿔 줌
-    st.subheader("🧹 변수 선택 & 데이터 전처리")
+    st.subheader("🧹 데이터 전처리 & 변수 선택")
     
     if st.session_state.data["merged"] is None:
         st.warning("⚠️ 먼저 '데이터 업로드' 단계를 완료하세요.")
@@ -229,13 +228,13 @@ elif st.session_state.step == 2:
         df_origin = st.session_state.data["merged"].copy()
         all_cols = df_origin.columns.tolist()
 
-        st.markdown("### 1️⃣ 분석 변수 설정")
-        
-        col1, col2 = st.columns(2)
-        
         # ---------------------------------------------------------
-        # [핵심 1] 타겟 변수(Y) 정의  👉 원래 로직 그대로 유지
+        # 1️⃣ 타겟 변수(Y) 먼저 선택 (기존 로직 그대로 유지)
         # ---------------------------------------------------------
+        st.markdown("### 1️⃣ 타겟 변수 설정 & 전처리 실행")
+
+        col1, col2 = st.columns([2, 1])
+
         with col1:
             if "Loan_status" in all_cols:
                 default_index = all_cols.index("Loan_status")
@@ -248,177 +247,175 @@ elif st.session_state.step == 2:
                 index=default_index,
                 help="예측하고자 하는 목표 변수입니다."
             )
-            
-        # ---------------------------------------------------------
-        # [핵심 2] 타겟 변수 정의에 따른 입력 변수(X) 후보 목록 구성
-        # ---------------------------------------------------------
-        feature_candidates = [c for c in all_cols if c != target_col]
-        
+
         with col2:
-            default_feats = feature_candidates[:10] if len(feature_candidates) > 10 else feature_candidates
-            selected_features = st.multiselect(
-                "📋 입력 변수 (X) 선택",
-                options=feature_candidates,  # 타겟이 제외된 리스트 사용
-                default=default_feats,
-                help="타겟 변수를 예측하기 위해 사용할 데이터입니다."
-            )
-        
+            st.info("타겟 변수를 선택한 다음, 아래 전처리 버튼을 눌러주세요.")
+
+        # 타겟 변수 이름을 세션에 저장 (step 3에서도 사용)
+        st.session_state.preprocess["target_col"] = target_col
+
         st.divider()
 
-        if not selected_features:
-            st.error("⚠️ 분석할 변수를 선택해주세요.")
-        else:
-            # 설정 저장
-            st.session_state.preprocess["target_col"] = target_col
-            
-            # 탭 생성 (리스트 인덱싱으로 안전하게 접근)
-            tabs = st.tabs(["⚡ 전처리 실행"])
-            tab1 = tabs[0]
-            
-            with tab1:
-                st.write(
-                    "**Y(타겟) 결측치 제거**, "
-                    "**X(입력) 결측치 처리**, "
-                    "**결측치 95% 이상 변수 제거**, "
-                    "**이상치(IQR) 처리**를 수행합니다."
-                )
-                
-                if st.button("🚀 전처리 및 정제 시작", type="primary"):
-                    with st.spinner("데이터 정제 중..."):
+        # ---------------------------------------------------------
+        # 2️⃣ 전처리 실행 버튼 (X 후보 전체에 대해 전처리)
+        # ---------------------------------------------------------
+        st.markdown("### 2️⃣ 데이터 전처리 실행")
+
+        if st.button("🚀 전처리 및 정제 시작", type="primary"):
+            with st.spinner("데이터 정제 중..."):
+                try:
+                    # 1. 타겟(Y) 결측치 제거 (타겟 없는 행은 학습 불가)
+                    clean_df = df_origin.dropna(subset=[target_col]).reset_index(drop=True)
+                    dropped_count = len(df_origin) - len(clean_df)
+                    if dropped_count > 0:
+                        st.warning(f"⚠️ 타겟 변수({target_col})가 비어있는 {dropped_count}개 행을 제거했습니다.")
+
+                    # 2. 입력 변수(X) 후보: 타겟을 제외한 모든 컬럼
+                    X_raw = clean_df.drop(columns=[target_col])
+                    y = clean_df[target_col].copy()
+
+                    # 🔹 결측치 비율 95% 이상인 X 컬럼 제거
+                    missing_ratio = X_raw.isna().mean()
+                    high_missing_cols = missing_ratio[missing_ratio >= 0.95].index.tolist()
+                    if high_missing_cols:
+                        st.warning(
+                            f"⚠️ 결측치 비율이 95% 이상인 변수 {len(high_missing_cols)}개를 제거했습니다: "
+                            f"{', '.join(high_missing_cols)}"
+                        )
+                        X_raw = X_raw.drop(columns=high_missing_cols)
+
+                    # -----------------------------------------------------
+                    # [핵심 3] 타겟 변수(Y)의 타입에 따른 인코딩 처리 (기존 로직 유지)
+                    # -----------------------------------------------------
+                    le_target = None
+                    if y.dtype == 'object' or y.dtype.name == 'category':
                         try:
-                            # -----------------------------------------------------
-                            # [안전 장치] 혹시라도 입력 변수에 타겟이 포함되어 있는지 재확인
-                            # -----------------------------------------------------
-                            if target_col in selected_features:
-                                selected_features.remove(target_col)
-                                st.warning(f"⚠️ 입력 변수 목록에서 타겟 변수 '{target_col}'를 자동으로 제외했습니다.")
-
-                            # 1. 타겟(Y) 결측치 처리 (타겟이 없으면 학습 불가하므로 제거)
-                            clean_df = df_origin.dropna(subset=[target_col]).reset_index(drop=True)
-                            
-                            dropped_count = len(df_origin) - len(clean_df)
-                            if dropped_count > 0:
-                                st.warning(f"⚠️ 타겟 변수({target_col})가 비어있는 {dropped_count}개 행을 제거했습니다.")
-                            
-                            # 🔹 입력 변수 영역에서 결측치 비율 95% 이상인 컬럼 제거
-                            X_raw = clean_df[selected_features].copy()
-                            missing_ratio = X_raw.isna().mean()
-                            high_missing_cols = missing_ratio[missing_ratio >= 0.95].index.tolist()
-                            
-                            if high_missing_cols:
-                                st.warning(
-                                    f"⚠️ 결측치 비율이 95% 이상인 변수 {len(high_missing_cols)}개를 제거했습니다: "
-                                    f"{', '.join(high_missing_cols)}"
-                                )
-                                X_raw = X_raw.drop(columns=high_missing_cols)
-                                # 선택된 특성 목록도 동기화
-                                selected_features = [c for c in selected_features if c not in high_missing_cols]
-                            
-                            # 타겟 분리
-                            y = clean_df[target_col].copy()
-                            
-                            # -----------------------------------------------------
-                            # [핵심 3] 타겟 변수(Y)의 타입에 따른 인코딩 처리
-                            # -----------------------------------------------------
-                            le_target = None
-                            
-                            if y.dtype == 'object' or y.dtype.name == 'category':
-                                try:
-                                    le_target = LabelEncoder()
-                                    y = pd.Series(le_target.fit_transform(y), index=y.index)
-                                    st.info(f"ℹ️ 타겟 변수 '{target_col}'가 문자열 형식이어서 숫자로 변환(Label Encoding)했습니다.")
-                                    mapping_info = {i: label for i, label in enumerate(le_target.classes_)}
-                                    st.caption(f"└ 변환 정보: {mapping_info}")
-                                except Exception as e:
-                                    st.warning(f"타겟 변수 인코딩 중 이슈 발생: {e}")
-
-                            # -----------------------------------------------------
-                            # 입력 변수(X) 전처리 시작
-                            # -----------------------------------------------------
-                            X = X_raw.copy()
-                            
-                            num_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
-                            cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
-                            
-                            # 1. 값이 하나도 없는 컬럼 제외
-                            valid_num_cols = [c for c in num_cols if X[c].notna().sum() > 0]
-                            num_cols = valid_num_cols 
-
-                            # 변환기 준비
-                            imputer = SimpleImputer(strategy='mean')
-                            scaler = StandardScaler()
-                            encoders = {}
-                            outlier_bounds = {}  # 🔹 이상치 처리 경계 저장
-
-                            # 2. 수치형 변수 처리 (결측치 평균 대치 -> 이상치 처리 -> 스케일링)
-                            if num_cols:
-                                # 2-1) 결측치 평균 대치
-                                X_imputed = imputer.fit_transform(X[num_cols])
-                                X_num_df = pd.DataFrame(X_imputed, columns=num_cols, index=X.index)
-
-                                # 2-2) 이상치(IQR 기준) 처리: 윈저라이징
-                                for col in num_cols:
-                                    q1 = X_num_df[col].quantile(0.25)
-                                    q3 = X_num_df[col].quantile(0.75)
-                                    iqr = q3 - q1
-                                    
-                                    if iqr == 0:
-                                        continue
-                                    
-                                    lower = q1 - 1.5 * iqr
-                                    upper = q3 + 1.5 * iqr
-                                    
-                                    outlier_bounds[col] = {"lower": lower, "upper": upper}
-                                    
-                                    X_num_df[col] = X_num_df[col].clip(lower=lower, upper=upper)
-                                
-                                # 2-3) 스케일링
-                                X_scaled = scaler.fit_transform(X_num_df)
-                                X[num_cols] = pd.DataFrame(X_scaled, columns=num_cols, index=X.index)
-                            
-                            # 3. 범주형 변수 처리 (결측치 'Unknown' -> Label Encoding)
-                            for col in cat_cols:
-                                X[col] = X[col].fillna("Unknown").astype(str)
-                                le = LabelEncoder()
-                                trans = le.fit_transform(X[col])
-                                X[col] = pd.Series(trans, index=X.index)
-                                encoders[col] = le
-                            
-                            # 최종 데이터 병합 및 정리
-                            final_features = num_cols + cat_cols
-                            X = X[final_features]
-                            X = X.replace([np.inf, -np.inf], np.nan)  # 무한대 처리
-                            
-                            # 잔여 결측치 확인 (있으면 0으로 채움)
-                            if X.isna().sum().sum() > 0:
-                                st.info("ℹ️ 처리되지 않은 잔여 결측치를 0으로 대치합니다.")
-                                X = X.fillna(0)
-                            
-                            # -----------------------------------------------------
-                            # 전역 상태(Session State)에 저장
-                            # -----------------------------------------------------
-                            st.session_state.preprocess.update({
-                                "feature_cols": final_features,
-                                "imputer": imputer if num_cols else None,
-                                "scaler": scaler if num_cols else None,
-                                "encoders": encoders,
-                                "target_encoder": le_target,
-                                "outlier_bounds": outlier_bounds
-                            })
-                            
-                            st.session_state.data["X_processed"] = X
-                            st.session_state.data["y_processed"] = y
-                            st.success(f"✅ 전처리 완료! (입력 변수: {len(final_features)}개, 데이터: {len(X)}행)")
-                            st.dataframe(X.head(), width='stretch')
-
-                            # SMOTE 플래그 기본값 (나중에 step 3에서 쓸 수 있게만 유지)
-                            if "use_smote" not in st.session_state:
-                                st.session_state.use_smote = False
-                            
+                            le_target = LabelEncoder()
+                            y = pd.Series(le_target.fit_transform(y), index=y.index)
+                            st.info(f"ℹ️ 타겟 변수 '{target_col}'가 문자열 형식이어서 숫자로 변환(Label Encoding)했습니다.")
+                            mapping_info = {i: label for i, label in enumerate(le_target.classes_)}
+                            st.caption(f"└ 변환 정보: {mapping_info}")
                         except Exception as e:
-                            st.error(f"❌ 전처리 중 오류 발생: {str(e)}")
-                else:
-                    st.info("👈 위 버튼을 눌러 전처리를 시작하세요.")
+                            st.warning(f"타겟 변수 인코딩 중 이슈 발생: {e}")
+
+                    # -----------------------------------------------------
+                    # 입력 변수(X) 전처리 시작 (아직 변수 선택은 안 함)
+                    # -----------------------------------------------------
+                    X = X_raw.copy()
+                    
+                    num_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
+                    cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+                    
+                    # 1. 값이 하나도 없는 수치형 컬럼 제외
+                    valid_num_cols = [c for c in num_cols if X[c].notna().sum() > 0]
+                    num_cols = valid_num_cols 
+
+                    # 변환기 준비
+                    imputer = SimpleImputer(strategy='mean')
+                    scaler = StandardScaler()
+                    encoders = {}
+                    outlier_bounds = {}
+
+                    # 2. 수치형 변수 처리 (결측치 평균 대치 -> 이상치 처리 -> 스케일링)
+                    if num_cols:
+                        X_imputed = imputer.fit_transform(X[num_cols])
+                        X_num_df = pd.DataFrame(X_imputed, columns=num_cols, index=X.index)
+
+                        # IQR 기준 윈저라이징
+                        for col in num_cols:
+                            q1 = X_num_df[col].quantile(0.25)
+                            q3 = X_num_df[col].quantile(0.75)
+                            iqr = q3 - q1
+                            if iqr == 0:
+                                continue
+                            lower = q1 - 1.5 * iqr
+                            upper = q3 + 1.5 * iqr
+                            outlier_bounds[col] = {"lower": lower, "upper": upper}
+                            X_num_df[col] = X_num_df[col].clip(lower=lower, upper=upper)
+
+                        # 스케일링
+                        X_scaled = scaler.fit_transform(X_num_df)
+                        X[num_cols] = pd.DataFrame(X_scaled, columns=num_cols, index=X.index)
+                    
+                    # 3. 범주형 변수 처리 (결측치 'Unknown' -> Label Encoding)
+                    for col in cat_cols:
+                        X[col] = X[col].fillna("Unknown").astype(str)
+                        le = LabelEncoder()
+                        trans = le.fit_transform(X[col])
+                        X[col] = pd.Series(trans, index=X.index)
+                        encoders[col] = le
+                    
+                    # 최종 X 후보 컬럼 목록
+                    final_features = num_cols + cat_cols
+                    X = X[final_features]
+                    X = X.replace([np.inf, -np.inf], np.nan)
+                    
+                    if X.isna().sum().sum() > 0:
+                        st.info("ℹ️ 처리되지 않은 잔여 결측치를 0으로 대치합니다.")
+                        X = X.fillna(0)
+
+                    # -----------------------------------------------------
+                    # 전처리 결과를 "후보 데이터"로 저장 (아직 X 최종 선택 전)
+                    # -----------------------------------------------------
+                    st.session_state.data["X_candidates"] = X          # 전처리된 전체 X 후보
+                    st.session_state.data["y_processed"] = y          # 전처리된 Y
+                    st.session_state.preprocess.update({
+                        "feature_candidates": final_features,
+                        "imputer": imputer if num_cols else None,
+                        "scaler": scaler if num_cols else None,
+                        "encoders": encoders,
+                        "target_encoder": le_target,
+                        "outlier_bounds": outlier_bounds
+                    })
+
+                    # SMOTE 플래그 기본값 (나중에 분류일 때만 사용)
+                    if "use_smote" not in st.session_state:
+                        st.session_state.use_smote = False
+
+                    st.success(f"✅ 전처리 완료! (후보 변수: {len(final_features)}개, 데이터: {len(X)}행)")
+                    st.dataframe(X.head(), width='stretch')
+
+                except Exception as e:
+                    st.error(f"❌ 전처리 중 오류 발생: {str(e)}")
+
+        st.divider()
+
+        # ---------------------------------------------------------
+        # 3️⃣ 전처리된 데이터에서 최종 변수 선택 (같은 단계에서 진행)
+        # ---------------------------------------------------------
+        if "X_candidates" in st.session_state.data:
+            st.markdown("### 3️⃣ 최종 입력 변수(X) 선택")
+
+            X_candidates = st.session_state.data["X_candidates"]
+            feature_candidates = st.session_state.preprocess.get(
+                "feature_candidates",
+                X_candidates.columns.tolist()
+            )
+
+            # 이전에 선택한 feature_cols 있으면 기본값으로 사용
+            prev_selected = st.session_state.preprocess.get(
+                "feature_cols",
+                feature_candidates[:10] if len(feature_candidates) > 10 else feature_candidates
+            )
+
+            selected_features = st.multiselect(
+                "📋 분석에 사용할 최종 입력 변수 (X)",
+                options=feature_candidates,
+                default=prev_selected,
+                help="전처리된 변수들 중에서 실제 모델에 넣을 변수만 선택합니다."
+            )
+
+            if not selected_features:
+                st.error("⚠️ 최소 1개 이상의 입력 변수를 선택해주세요.")
+            else:
+                # 최종 X 구성 및 세션에 저장
+                X_final = X_candidates[selected_features].copy()
+                st.session_state.data["X_processed"] = X_final
+                st.session_state.preprocess["feature_cols"] = selected_features
+
+                st.success(f"✅ 최종 변수 선택 완료! (X: {len(selected_features)}개)")
+                st.dataframe(X_final.head(), use_container_width=True)
+
 
 
 
